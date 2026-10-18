@@ -37,7 +37,7 @@ These rules cannot be overridden by any subproject manifest, human prompt shortc
 
 1. **Single Monorepo Standard**: All services, apps, and libraries belong to a unified monorepo governed by a task DAG (Nx / `ep run`).
 2. **Pure Domain Logic (DDD / Hexagonal)**: Domain entities and use cases must have zero imports of persistence frameworks (ORM, SQL, Prisma, TypeORM, SQLAlchemy, GORM) or UI libraries.
-3. **Ephemeral Real Containers for Datastores**: All database integration tests must run against real disposable containers (Testcontainers/Podman). In-memory SQL emulators (e.g. SQLite for PostgreSQL) are strictly banned.
+3. **Ephemeral Real Containers for Datastores**: All database integration tests must run against real disposable containers (resolved intelligently via `ep container detect`, preferring rootless Podman with Docker fallback). In-memory SQL emulators (e.g. SQLite for PostgreSQL) are strictly banned.
 4. **UTC Storage Convention**: All datastore timestamps, network contracts, and internal clocks must store and exchange UTC ISO-8601 timestamps.
 5. **Pre-Implementation Change Surface**: Every modification must have an approved, mechanically validated Change Surface (`CHANGE_SURFACE.md`). Touching files outside the declared surface is blocked by `ep surface check-diff`.
 6. **Anti-Sprawl Hygiene (Rule 2.6)**:
@@ -77,7 +77,7 @@ When executing tasks, follow these operational velocity rules:
 | `sync` | Validate multi-tier branch alignment (`main`, `test`, `stage`, `prod`) | `ep vcs sync-check` |
 | `release` | Orchestrate SemVer bumps and signed release tags | `ep release create` / `ep release finalize` |
 | `adopt` | Brownfield monorepo onboarding and baseline ratcheting | `ep adopt --apply` |
-| `ops` | Operational readiness, SLO validation, code ownership, DORA & perf | `ep slo`, `ep codeowners`, `ep dora`, `ep iac`, `ep perf` |
+| `ops` | Operational readiness, container resolver, SLO validation, code ownership, DORA & perf | `ep container`, `ep slo`, `ep codeowners`, `ep dora`, `ep iac`, `ep perf` |
 
 ---
 

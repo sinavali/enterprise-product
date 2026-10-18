@@ -15,6 +15,19 @@ Every external tool supported by EP-OS conforms to these invariants:
 
 ## 2. Supported Tooling Registry
 
+### 2.0 OCI Container Engines (`Podman` & `Docker`)
+- **Binaries**: `podman` or `docker`
+- **Purpose**: Powers Tier 1 Real-Container Integration Testing (ephemeral databases, brokers, caches) and containerized test runners (e.g. k6).
+- **CLI Resolver**: `ep container [status|detect|info] [--json]`
+- **Resolution & Prioritization Policy**:
+  1. **Both Podman and Docker Installed**: Probes socket/daemon liveness. Prefers **Podman** as enterprise default (rootless, daemonless, zero commercial licensing fees). Automatically falls back to **Docker** if Docker daemon is actively running while Podman machine/socket is inactive.
+  2. **Single Engine Installed**: Verifies liveness and selects the available engine.
+  3. **Neither Installed**: Halts gracefully with platform-specific package installation commands (Ubuntu/Debian, RHEL/Fedora, Arch, macOS Homebrew, Windows WinGet / WSL2).
+- **OS-Agnostic Setup Guide**:
+  - **Linux**: Native and rootless (`sudo apt install podman` or `sudo dnf install podman`).
+  - **macOS**: `brew install podman && podman machine init && podman machine start`.
+  - **Windows (Recommended)**: Inside WSL2 (`sudo apt install podman`) or host `winget install RedHat.Podman-Desktop`.
+
 ### 2.1 Load & Stress Testing (`k6`)
 - **Binary**: `k6`
 - **Purpose**: High-throughput load, stress, spike, and soak testing of HTTP, gRPC, and WebSocket APIs.

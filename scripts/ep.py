@@ -27,7 +27,7 @@ try:
     from scripts.ep_adopt import cmd_adopt
     from scripts.ep_ast import cmd_ast
     from scripts.ep_hooks import cmd_hooks
-    from scripts.ep_ops import cmd_codeowners, cmd_dora, cmd_perf, cmd_slo
+    from scripts.ep_ops import cmd_codeowners, cmd_container, cmd_dora, cmd_perf, cmd_slo
     from scripts.ep_runner import cmd_run, cmd_run_many
     from scripts.ep_scaffold import cmd_init, cmd_manifest, cmd_preflight, cmd_worktree
     from scripts.ep_security import cmd_iac, cmd_license, cmd_security
@@ -47,7 +47,7 @@ except ImportError:
     from ep_adopt import cmd_adopt
     from ep_ast import cmd_ast
     from ep_hooks import cmd_hooks
-    from ep_ops import cmd_codeowners, cmd_dora, cmd_perf, cmd_slo
+    from ep_ops import cmd_codeowners, cmd_container, cmd_dora, cmd_perf, cmd_slo
     from ep_runner import cmd_run, cmd_run_many
     from ep_scaffold import cmd_init, cmd_manifest, cmd_preflight, cmd_worktree
     from ep_security import cmd_iac, cmd_license, cmd_security
@@ -618,6 +618,11 @@ def main():
     p_perf.add_argument("--duration", default="10s", help="Duration string")
     p_perf.add_argument("--dry-run", action="store_true", help="Validate script and execution engine without invoking HTTP requests")
 
+    # container
+    p_container = subparsers.add_parser("container", help="Smart OCI container engine detector and liveness resolver")
+    p_container.add_argument("action", nargs="?", default="status", choices=["status", "detect", "info"], help="Container action")
+    p_container.add_argument("--json", action="store_true", help="Output container engine status as JSON")
+
     args = parser.parse_args()
 
     if not args.subcommand:
@@ -707,6 +712,8 @@ def main():
         sys.exit(cmd_dora(args))
     elif args.subcommand == "perf":
         sys.exit(cmd_perf(args))
+    elif args.subcommand == "container":
+        sys.exit(cmd_container(args))
 
 
 if __name__ == "__main__":

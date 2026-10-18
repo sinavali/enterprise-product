@@ -79,7 +79,7 @@ All architectural and engineering rules are categorized into three hierarchical 
 These rules cannot be relaxed, bypassed, or overridden by any project, developer, or agent:
 1. **Single Monorepo via Deterministic DAG**: Root orchestration manages `lint`, `test`, `build`, and `audit` across all packages.
 2. **Pure Domain Logic**: Domain entities, value objects, and domain services must have zero imports from frameworks, ORMs, transport layers, or external third-party SDKs.
-3. **No Engine-Substitution Emulation**: Integration tests must execute against the exact database engine and major version utilized in production via real ephemeral containers (Podman/Testcontainers). Replacing PostgreSQL/MySQL with in-memory SQLite is strictly forbidden.
+3. **No Engine-Substitution Emulation**: Integration tests must execute against the exact database engine and major version utilized in production via real ephemeral containers (Podman/Testcontainers). Replacing PostgreSQL/MySQL with in-memory SQLite is strictly forbidden. The active container engine is automatically and intelligently resolved across platforms via `ep container detect` (preferring rootless Podman with seamless Docker fallback).
 4. **UTC Storage Convention**: All database timestamps, queue messages, events, and API payloads must be persisted and exchanged in UTC (ISO 8601 with `Z` or UTC timestamp).
 5. **Mandatory Change Surface**: No non-trivial implementation without an approved and validated Change Surface.
 6. **Anti-Sprawl Hygiene (Rule 2.6)**: Files must not exceed 800 lines (soft target $\le 400$ lines), directory nesting must not exceed 6 levels, and zero generic dumping grounds (`utils/`, `helpers/`, `common/`) are allowed.

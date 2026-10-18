@@ -378,6 +378,176 @@ def cmd_dora(args: argparse.Namespace) -> int:
 # ==============================================================================
 # SUBCOMMAND: ep perf
 # ==============================================================================
+# CONTAINER RESOLVER & SUBCOMMAND: ep container
+# ==============================================================================
+
+def get_container_install_instructions(platform_str: str) -> List[str]:
+    """Returns platform-specific instructions for installing Podman."""
+    p = platform_str.lower()
+    if p.startswith("linux"):
+        return [
+            "Ubuntu/Debian: sudo apt-get update && sudo apt-get install -y podman",
+            "Fedora/RHEL  : sudo dnf install -y podman",
+            "Arch Linux   : sudo pacman -S podman",
+        ]
+    elif p == "darwin":
+        return [
+            "macOS (Homebrew): brew install podman",
+            "Initialize VM   : podman machine init",
+            "Start VM        : podman machine start",
+        ]
+    elif p in ("win32", "cygwin"):
+        return [
+            "Windows (WinGet): winget install RedHat.Podman-Desktop",
+            "WSL2 (Ubuntu)   : sudo apt-get update && sudo apt-get install -y podman",
+        ]
+    return ["Install Podman: https://podman.io/getting-started/installation"]
+
+
+def probe_engine_liveness(binary_path: str, timeout: float = 2.5) -> bool:
+    """Probes whether the container engine's socket/daemon is actively responsive."""
+    try:
+        res = subprocess.run(
+            [binary_path, "info"],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+        return res.returncode == 0
+    except Exception:
+        return False
+
+
+def resolve_container_engine(check_liveness: bool = True, timeout: float = 2.5) -> Dict[str, Any]:
+    """
+    Intelligently resolves available OCI container engines on the host machine.
+    Hierarchy:
+    1. If both Podman and Docker exist:
+       - Probe socket/daemon liveness.
+       - Prefer Podman if alive (rootless, daemonless, FOSS enterprise standard).
+       - Fall back to Docker if Docker is alive and Podman is not.
+       - If neither socket is active, default to Podman binary with warning.
+    2. If only one exists:
+       - Probe its liveness and return it.
+    3. If neither exists:
+       - Return status 'missing' with OS-specific installation instructions.
+    """
+    podman_path = shutil.which("podman")
+    docker_path = shutil.which("docker")
+    platform_str = sys.platform
+
+    podman_alive = probe_engine_liveness(podman_path, timeout=timeout) if (podman_path and check_liveness) else (bool(podman_path) if not check_liveness else False)
+    docker_alive = probe_engine_liveness(docker_path, timeout=timeout) if (docker_path and check_liveness) else (bool(docker_path) if not check_liveness else False)
+
+    selected: Optional[str] = None
+    selected_path: Optional[str] = None
+    selected_alive: bool = False
+    reason: str = ""
+
+    engines_found: List[str] = []
+    if podman_path:
+        engines_found.append("podman")
+    if docker_path:
+        engines_found.append("docker")
+
+    if podman_path and docker_path:
+        if check_liveness:
+            if podman_alive:
+                selected = "podman"
+                selected_path = podman_path
+                selected_alive = True
+                reason = "Podman selected (active socket, rootless & daemonless enterprise standard)"
+            elif docker_alive:
+                selected = "docker"
+                selected_path = docker_path
+                selected_alive = True
+                reason = "Docker selected (active daemon detected while Podman socket is inactive)"
+            else:
+                selected = "podman"
+                selected_path = podman_path
+                selected_alive = False
+                reason = "Podman selected as enterprise default, but socket/machine is inactive (run 'podman machine start')"
+        else:
+            selected = "podman"
+            selected_path = podman_path
+            selected_alive = bool(podman_alive)
+            reason = "Podman selected (enterprise default: rootless, daemonless)"
+    elif podman_path:
+        selected = "podman"
+        selected_path = podman_path
+        selected_alive = podman_alive
+        reason = "Podman selected (only available OCI engine on host)"
+    elif docker_path:
+        selected = "docker"
+        selected_path = docker_path
+        selected_alive = docker_alive
+        reason = "Docker selected (only available OCI engine on host)"
+    else:
+        selected = None
+        selected_path = None
+        selected_alive = False
+        reason = "No OCI container engine (podman/docker) found in PATH"
+
+    status = "available" if (selected and selected_alive) else ("inactive" if selected else "missing")
+
+    return {
+        "status": status,
+        "selected": selected,
+        "path": selected_path,
+        "alive": selected_alive,
+        "reason": reason,
+        "platform": platform_str,
+        "engines_found": engines_found,
+        "details": {
+            "podman": {"path": podman_path, "alive": podman_alive if podman_path else None},
+            "docker": {"path": docker_path, "alive": docker_alive if docker_path else None},
+        },
+        "install_instructions": get_container_install_instructions(platform_str),
+    }
+
+
+def cmd_container(args: argparse.Namespace) -> int:
+    as_json = getattr(args, "json", False)
+    res = resolve_container_engine(check_liveness=True)
+
+    if as_json:
+        print(json.dumps(res, indent=2))
+        return 0 if res["selected"] else 1
+
+    print("=== EP-OS OCI Container Engine Resolver ===")
+    print(f"Platform: {res['platform']}")
+
+    if not res["engines_found"]:
+        print("\n[FAIL] No OCI container engine found in PATH!")
+        print("       Tier 1 Inviolable #3 mandates real ephemeral containers for integration testing.\n")
+        print("Recommended installation commands:")
+        for instr in res["install_instructions"]:
+            print(f"  • {instr}")
+        return 1
+
+    found_str = ", ".join(f"{eng} ({res['details'][eng]['path']})" for eng in res["engines_found"])
+    print(f"Found Engines  : {found_str}")
+    print(f"Selected Engine: {res['selected']} ({res['path']})")
+    liveness_str = "ALIVE (Responsive socket)" if res["alive"] else "INACTIVE (Daemon/Machine not started)"
+    print(f"Liveness Status: {liveness_str}")
+    print(f"Selection Rule : {res['reason']}")
+
+    if not res["alive"]:
+        print(f"\n[WARN] Container engine '{res['selected']}' was found, but its socket is not currently responsive.")
+        if res["selected"] == "podman":
+            print("       Start Podman VM/service: 'podman machine start' or 'systemctl --user start podman.socket'")
+        else:
+            print("       Start Docker daemon: 'sudo systemctl start docker' or launch Docker Desktop.")
+        return 1
+
+    print("\n[PASS] OCI container runtime is ready for ephemeral integration tests.")
+    return 0
+
+
+# ==============================================================================
+# SUBCOMMAND: ep perf
+# ==============================================================================
 
 def cmd_perf(args: argparse.Namespace) -> int:
     script = getattr(args, "script", None) or "templates/perf-test.k6.js"
@@ -396,7 +566,8 @@ def cmd_perf(args: argparse.Namespace) -> int:
     print(f"Virtual Users: {vus} | Duration: {duration}\n")
 
     k6_bin = shutil.which("k6")
-    container_engine = shutil.which("podman") or shutil.which("docker")
+    container_info = resolve_container_engine(check_liveness=not dry_run)
+    container_engine = container_info["selected"]
 
     if dry_run:
         engine_str = f"native k6 ({k6_bin})" if k6_bin else (f"container ({container_engine})" if container_engine else "none (fallback instructions)")
@@ -409,9 +580,8 @@ def cmd_perf(args: argparse.Namespace) -> int:
         return subprocess.run(cmd).returncode
 
     # Check container runtime fallback
-    container_engine = shutil.which("podman") or shutil.which("docker")
     if container_engine:
-        print(f"[INFO] Native k6 binary not found; falling back to container engine '{container_engine}'.")
+        print(f"[INFO] Native k6 binary not found; falling back to {container_info['reason']}.")
         cwd = os.getcwd()
         cmd = [
             container_engine, "run", "--rm", "-i",
@@ -425,9 +595,11 @@ def cmd_perf(args: argparse.Namespace) -> int:
         print(f"[EXEC] Running containerized k6: {' '.join(cmd)}")
         return subprocess.run(cmd).returncode
 
-    print("[WARN] Neither 'k6' nor container engine (podman/docker) was detected.", file=sys.stderr)
+    print("[WARN] Neither 'k6' nor an OCI container engine (podman/docker) was detected.", file=sys.stderr)
     print("       Per 'references/optional-tooling.md', performance testing degrades gracefully.", file=sys.stderr)
     print("       To execute performance tests:", file=sys.stderr)
     print("         1. Install k6: 'https://k6.io/docs/get-started/installation/'", file=sys.stderr)
-    print("         2. Or run via Podman: 'podman run --rm -i -v $(pwd):/work:z -w /work grafana/k6 run <script>'", file=sys.stderr)
+    print("         2. Or install an OCI container engine:", file=sys.stderr)
+    for instr in container_info["install_instructions"]:
+        print(f"            • {instr}", file=sys.stderr)
     return 0

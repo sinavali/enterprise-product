@@ -200,7 +200,8 @@ ep release create <version>
 ep release finalize --prod
 ep milestone status
 
-# Operational Engineering, SLOs, DORA & Performance
+# Operational Engineering, Containers, SLOs, DORA & Performance
+ep container [status|detect|info] [--json]
 ep slo [--file <path>]
 ep codeowners [--root <dir>]
 ep dora [--days <count>]
