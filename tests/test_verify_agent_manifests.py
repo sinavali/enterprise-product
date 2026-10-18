@@ -121,6 +121,44 @@ Tests.
         self.assertNotEqual(proc.returncode, 0)
         self.assertIn("Illegal Tier 1 override", proc.stdout)
 
+    def test_anti_mvp_tier_1_override_fails(self):
+        proj_dir = os.path.join(self.temp_dir, "services", "mvp-service")
+        os.makedirs(proj_dir, exist_ok=True)
+        agent_file = os.path.join(proj_dir, "AGENT.md")
+
+        content = """---
+project_name: "mvp-service"
+profile: "A"
+stack: "node-20"
+scope: "backend"
+owner: "mvp-team"
+tier_overrides:
+  - rule: "anti-mvp"
+    adr_reference: "docs/adr/0002.md"
+    justification: "We want to ship an MVP prototype first"
+---
+
+# MVP Service Manifest
+## 1. Scope & Business Intent
+Scope.
+## 2. Architectural Profile
+Profile.
+## 3. Local Nx Target
+Target.
+## 4. Test & Verification
+Tests.
+"""
+        with open(agent_file, "w", encoding="utf-8") as f:
+            f.write(content)
+
+        proc = subprocess.run(
+            [str(BIN_DIR / "verify-agent-manifests"), "--root", self.temp_dir, "--no-check-adrs"],
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("Illegal Tier 1 override attempted for rule 'anti-mvp'", proc.stdout)
+
     def test_file_relative_and_symlinked_adr_resolution(self):
         proj_dir = os.path.join(self.temp_dir, "services", "override-service")
         adr_dir = os.path.join(self.temp_dir, "docs", "adr")

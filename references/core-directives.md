@@ -59,6 +59,7 @@ All architectural and engineering rules are categorized into three hierarchical 
 │  - Pure Domain (DDD)      - 2-Pass PR Self-Audit       │
 │  - UTC Storage Convention - 14-Day NC Merge Block      │
 │  - Expand/Contract Rule   - Max Directory Depth ≤ 6    │
+│  - Anti-MVP / Zero-Stub   - Human-Only Prod Merges     │
 ├────────────────────────────────────────────────────────┤
 │  Tier 2: Strong Defaults (ADR & AGENT.md Justified)    │
 │  - Coverage Targets (≥95% Domain, ≥80% Adapters)       │
@@ -85,6 +86,7 @@ These rules cannot be relaxed, bypassed, or overridden by any project, developer
 7. **2-Pass PR Self-Audit Protocol**: The agent must audit its own diff across both passes and achieve 0 blocking findings before merging.
 8. **Directory Nesting Depth Ceiling**: Directory hierarchy must not exceed 6 levels from project root.
 9. **Zero-Downtime Expand/Contract Migrations**: Destructive database alterations that break rolling blue/green deployments are strictly forbidden.
+10. **Anti-MVP & Zero-Stub Mandate**: AI agents and developers are **strictly forbidden from proposing or implementing 'MVP', 'Proof-of-Concept', 'mock-first', or 'phased hardening' shortcuts**. Every deliverable—regardless of how narrow or bounded its scope—must be the finalized, fully resilient, production-ready implementation with complete error handling, timeouts, retries, and ephemeral container verification from the outset. Deferring production hardening to future steps or versions is a blocking violation.
 
 ### Tier 2: Strong Defaults (Requires ADR & `AGENT.md` Override)
 These are standard enterprise requirements. Deviations are permitted only with an accepted Architecture Decision Record (ADR) and explicit declaration in the subproject's `AGENT.md`:

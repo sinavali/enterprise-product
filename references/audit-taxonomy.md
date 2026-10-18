@@ -77,6 +77,7 @@ Every finding discovered during an audit must be categorized into one of three s
 - **Check 8.2 (Null Safety)**: Proper handling of nullable and optional values; zero unprotected dereferencing.
 - **Check 8.3 (Error Handling)**: No empty catch blocks (`catch (e) {}`), swallowed errors, or generic `throw new Error()`. Custom, typed error definitions must be used.
 - **Check 8.4 (Immutability)**: Domain value objects and event payloads must be immutable.
+- **Check 8.5 (Anti-MVP & Zero-Stub Mandate)**: Prohibit 'MVP', 'Proof-of-Concept', 'mock-first', or 'phased hardening' shortcuts. Zero incomplete stubs or deferred resilience logic. Every deliverable must be finalized and production-ready.
 
 ### Dimension 9: Documentation & Spec Drift
 - **Check 9.1 (Change Surface Conformance)**: The implementation diff must strictly correspond to the approved `CHANGE_SURFACE.md`.

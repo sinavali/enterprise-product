@@ -36,6 +36,8 @@ TIER_1_BANNED_OVERRIDES = {
     "directory-depth",
     "expand-contract",
     "expand-contract-migration",
+    "anti-mvp",
+    "zero-stub",
 }
 
 REQUIRED_SECTIONS = [

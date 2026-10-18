@@ -47,6 +47,7 @@ These rules cannot be overridden by any subproject manifest, human prompt shortc
 7. **Zero-Downtime Expand/Contract Migrations**: Destructive DDL (instant column drops, column renames, adding non-null without default) is blocked by `ep migration check`.
 8. **14-Day NC Expiration**: Unresolved `NEED_CLARIFICATION` items older than 14 days mechanically block all PR merges (`ep nc check`).
 9. **Strict Human-Only Production Gate**: AI agents are **forbidden from merging into `prod`**. Agents may only prepare release candidate PRs (`ep pr create-prod`) with auto-merge forcibly disabled. Merging to `prod` requires human verification.
+10. **Anti-MVP & Zero-Stub Mandate**: AI agents and developers are **strictly forbidden from proposing or implementing 'MVP', 'Proof-of-Concept', 'mock-first', or 'phased hardening' shortcuts**. Every deliverable—regardless of how narrow or bounded its scope—must be the finalized, fully resilient, production-ready implementation with complete error handling, timeouts, retries, and ephemeral container verification from the outset. Deferring production hardening to future steps or versions is a blocking violation.
 
 ---
 

@@ -37,6 +37,7 @@ tier_overrides: []
 - Integration tests located in `tests/integration/` utilizing **real ephemeral containers** (Testcontainers/Podman).
 - In-memory SQL emulators (e.g. SQLite for PostgreSQL) are strictly forbidden (Tier 1 Inviolable).
 - Timestamp handling must strictly store and exchange UTC ISO-8601 (Tier 1 Inviolable).
+- Anti-MVP & Zero-Stub Mandate: No prototypes, stubs, or deferred hardening; all code must be production-ready (Tier 1 Inviolable).
 
 ## 5. Approved Tier 2 Deviations
 | Rule | Justification | ADR Reference |
@@ -46,3 +47,4 @@ tier_overrides: []
 ## 6. Project Invariants
 - [Invariant 1: e.g., Aggregate roots enforce transactional boundary]
 - [Invariant 2: e.g., All external HTTP calls configure explicit 5s timeout]
+- [Invariant 3: Zero-stub guarantee: all error paths, retries, and edge cases fully implemented]
