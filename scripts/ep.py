@@ -24,28 +24,9 @@ for p in [REPO_ROOT, SCRIPTS_DIR]:
         sys.path.insert(0, p)
 
 try:
-    from scripts.ep_adopt import cmd_adopt
-    from scripts.ep_ast import cmd_ast
-    from scripts.ep_hooks import cmd_hooks
-    from scripts.ep_ops import cmd_codeowners, cmd_container, cmd_dora, cmd_perf, cmd_slo
-    from scripts.ep_runner import cmd_run, cmd_run_many
-    from scripts.ep_scaffold import cmd_init, cmd_manifest, cmd_preflight, cmd_worktree
-    from scripts.ep_security import cmd_iac, cmd_license, cmd_security
-    from scripts.ep_session import cmd_session
-    from scripts.ep_stack import STACK_DEFINITIONS, detect_stack
-    from scripts.ep_sync import cmd_sync_skill
-    from scripts.ep_vcs import (
-        BaseGitProvider,
-        GitHubProvider,
-        GitLabProvider,
-        LocalGitProvider,
-        cmd_pr,
-        cmd_vcs,
-        get_git_provider,
-    )
-except ImportError:
     from ep_adopt import cmd_adopt
     from ep_ast import cmd_ast
+    from ep_context import cmd_pack
     from ep_hooks import cmd_hooks
     from ep_ops import cmd_codeowners, cmd_container, cmd_dora, cmd_perf, cmd_slo
     from ep_runner import cmd_run, cmd_run_many
@@ -54,15 +35,20 @@ except ImportError:
     from ep_session import cmd_session
     from ep_stack import STACK_DEFINITIONS, detect_stack
     from ep_sync import cmd_sync_skill
-    from ep_vcs import (
-        BaseGitProvider,
-        GitHubProvider,
-        GitLabProvider,
-        LocalGitProvider,
-        cmd_pr,
-        cmd_vcs,
-        get_git_provider,
-    )
+    from ep_vcs import BaseGitProvider, GitHubProvider, GitLabProvider, LocalGitProvider, cmd_pr, cmd_vcs, get_git_provider
+except ImportError:
+    from scripts.ep_adopt import cmd_adopt
+    from scripts.ep_ast import cmd_ast
+    from scripts.ep_context import cmd_pack
+    from scripts.ep_hooks import cmd_hooks
+    from scripts.ep_ops import cmd_codeowners, cmd_container, cmd_dora, cmd_perf, cmd_slo
+    from scripts.ep_runner import cmd_run, cmd_run_many
+    from scripts.ep_scaffold import cmd_init, cmd_manifest, cmd_preflight, cmd_worktree
+    from scripts.ep_security import cmd_iac, cmd_license, cmd_security
+    from scripts.ep_session import cmd_session
+    from scripts.ep_stack import STACK_DEFINITIONS, detect_stack
+    from scripts.ep_sync import cmd_sync_skill
+    from scripts.ep_vcs import BaseGitProvider, GitHubProvider, GitLabProvider, LocalGitProvider, cmd_pr, cmd_vcs, get_git_provider
 
 
 # ==============================================================================
@@ -669,6 +655,16 @@ def main():
     p_container.add_argument("action", nargs="?", default="status", choices=["status", "detect", "info"], help="Container action")
     p_container.add_argument("--json", action="store_true", help="Output container engine status as JSON")
 
+    # pack (context bundling & anti-slowness)
+    p_pack = subparsers.add_parser("pack", help="Batch-pack codebase context into a single LLM-optimized bundle (anti-slowness)")
+    p_pack.add_argument("--surface", action="store_true", help="Pack files from active Change Surface")
+    p_pack.add_argument("--diff", nargs="?", const="origin/main", help="Pack files from git diff")
+    p_pack.add_argument("--files", nargs="+", help="Specific files to pack")
+    p_pack.add_argument("--scope", help="Directory scope to pack")
+    p_pack.add_argument("--output", help="Output file path (default stdout)")
+    p_pack.add_argument("--max-lines", type=int, default=800, help="Max lines per file")
+    p_pack.add_argument("--root", default=".", help="Monorepo root")
+
     args = parser.parse_args()
 
     if not args.subcommand:
@@ -789,6 +785,8 @@ def main():
         sys.exit(cmd_perf(args))
     elif args.subcommand == "container":
         sys.exit(cmd_container(args))
+    elif args.subcommand in ("pack", "context"):
+        sys.exit(cmd_pack(args))
 
 
 if __name__ == "__main__":

@@ -46,6 +46,12 @@ Enterprise products must remain reliable across deployments and distributed boun
 - **Idempotency on Mutating Endpoints**: Mutating API boundaries (POST/PUT/PATCH for billing, orders, money transfer) must support and enforce an `Idempotency-Key` header with TTL caching.
 - **Graceful Shutdown & Drain**: All server processes must trap `SIGTERM`/`SIGINT`, halt accepting inbound traffic, drain active requests within a 15–30s window, and gracefully release database pools.
 
+### P11: Single-Turn Context Ingestion (Anti-Serialization Mandate)
+AI agents operating on enterprise products are **strictly prohibited from reading codebase files sequentially one-by-one across multiple conversational turns**. Sequential file reading introduces compounding network and turn latency. Agents and developers must use single-turn compound ingestion:
+- **Change Surface Packing**: Run `python3 scripts/ep.py pack --surface` to bundle all declared target files into stdout in a single command.
+- **Git Diff Packing**: Run `python3 scripts/ep.py pack --diff` to ingest all modified and staged files in one turn.
+- **Direct Terminal Bundling**: Execute `tail -n +1 <file1> <file2> ...` in a single compound command to inject files directly into the model context before editing.
+
 ---
 
 ## 2. The Tiering Map

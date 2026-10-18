@@ -47,6 +47,7 @@ resources:
 - In-memory SQL emulators (e.g. SQLite for PostgreSQL) are strictly forbidden (Tier 1 Inviolable).
 - Timestamp handling must strictly store and exchange UTC ISO-8601 (Tier 1 Inviolable).
 - Anti-MVP & Zero-Stub Mandate: No prototypes, stubs, or deferred hardening; all code must be production-ready (Tier 1 Inviolable).
+- Single-Turn Ingestion: Before editing, run `ep pack --surface` to ingest targeted files in one turn. Sequential one-by-one file reading across turns is forbidden.
 
 ## 5. Approved Tier 2 Deviations
 | Rule | Justification | ADR Reference |

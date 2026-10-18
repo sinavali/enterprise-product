@@ -57,9 +57,10 @@ These rules cannot be overridden by any subproject manifest, human prompt shortc
 
 When executing tasks, follow these operational velocity rules:
 
+- **Zero-Serialization File Ingestion Mandate (Anti-One-by-One Slowness)**: AI agents are **strictly forbidden from reading codebase files sequentially one-by-one across multiple conversational turns**. When planning, investigating, or modifying code, agents MUST run `ep pack` (e.g. `python3 scripts/ep.py pack --surface` or compound `tail -n +1 <files...>`) in a single bash command to inject all target files into context in a single turn before editing.
 - **Compound Shell Commands**: Always combine related shell commands using `&&` or pipelines in a single invocation. Never serialize sequential roundtrips.
-- **Batch Independent Reads**: Emit multiple parallel file view calls in the same turn.
-- **Context Hygiene**: Redirect noisy build, test, and dependency install output to temporary logs (`/tmp/*.log`).
+- **Batch Independent Reads**: If reading non-repo files, emit multiple parallel tool calls in the same turn.
+- **Context Hygiene**: Redirect noisy build, test, and dependency install output to temporary logs (`/tmp/*.log`). Use `/compact` when conversation history grows long.
 - **Lossless Technical Density**: Eliminate conversational fluff and filler. Provide exact paths, clickable links, precise diffs, and mechanical test results.
 
 ---
@@ -71,7 +72,7 @@ When executing tasks, follow these operational velocity rules:
 | `plan` | Analyze requirements, map blast radius, create Change Surface | `ep surface init` && `ep surface validate` |
 | `investigate` | Root-cause analysis, reproduce bug in real container | `ep ast scan` && author red tests |
 | `scaffold` | Initialize compliant subprojects and Nx contracts | `ep init <name> --profile [A\|B\|C\|D] --lang <stack>` |
-| `implement` | TDD implementation strictly bounded to Change Surface | `ep surface check-diff` && `ep run <project>:test` |
+| `implement` | TDD implementation bounded to Change Surface (pack context in 1 turn) | `ep pack --surface` && `ep surface check-diff` && `ep run <project>:test` |
 | `audit` | Execute 10-Dimension Enterprise Audit on diff | `ep audit --diff origin/main` |
 | `verify` | Parallel mechanical compliance suite | `ep verify` && `ep graph --check-boundaries` |
 | `pr-audit` | 2-Pass PR Self-Audit: Pass 1 audit -> fixes -> Pass 2 verify | `gh pr merge --squash` (or `ep pr create-prod`) |

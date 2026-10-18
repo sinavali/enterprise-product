@@ -84,15 +84,16 @@ Run `python3 scripts/ep.py preflight`.
 3. Verify the failure matches production diagnostics before modifying business code.
 
 ### Mode: `implement`
-1. Read the approved `Change Surface` and the relevant project's `AGENT.md`.
-2. Load `references/architectural-profiles.md` and `references/testing-matrix.md`.
-3. Follow strict Test-Driven Development (TDD):
+1. **Single-turn context ingestion**: Run `python3 scripts/ep.py pack --surface` to bundle all target files into context in a single command. Never inspect files one by one with sequential `view_file` calls.
+2. Read the approved `Change Surface` and the relevant project's `AGENT.md`.
+3. Load `references/architectural-profiles.md` and `references/testing-matrix.md`.
+4. Follow strict Test-Driven Development (TDD):
    - Step A: Author red tests in the designated Test Surface (domain invariants, failure edge cases).
    - Step B: Implement pure domain entities and use cases (Profile A/B/C/D rules apply).
    - Step C: Implement adapters and infrastructure using real containerized integrations (Podman/Testcontainers).
    - Step D: Ensure all timestamps are UTC, all external boundaries use typed contracts, and zero mock databases are used for integration tests.
-4. Enforce blast radius: Run `python3 scripts/ep.py surface check-diff`. If uncommitted or staged files deviate from the declared surface, halt immediately.
-5. Run project test suite via `nx test <project>` and linters via `nx lint <project>`.
+5. Enforce blast radius: Run `python3 scripts/ep.py surface check-diff`. If uncommitted or staged files deviate from the declared surface, halt immediately.
+6. Run project test suite via `nx test <project>` and linters via `nx lint <project>`.
 
 ### Mode: `session`
 1. Save progress checkpoint: `python3 scripts/ep.py session save --session-id <id> --task <task> --mode <mode>`.
@@ -178,6 +179,12 @@ ep preflight
 ep surface init [--output CHANGE_SURFACE.md]
 ep surface validate <path>
 ep surface check-diff [--base origin/main]
+
+# Single-Turn Context Ingestion & Anti-Slowness Bundle
+ep pack --surface               # Pack all files declared in active Change Surface into stdout (1 turn)
+ep pack --diff [base]           # Pack all modified/staged files from git diff
+ep pack --files <file1> <file2> # Pack specific files into structured context bundle
+ep pack --scope <dir>           # Pack all files in a project/directory scope
 
 # Task DAG Execution (Standalone Zero-Dependency Runner)
 ep run <project>:<target>
