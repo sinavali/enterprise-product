@@ -1,0 +1,83 @@
+# OpenTelemetry Collector Pipeline Configuration
+# EP-OS Standard Telemetry Aggregation & Export Pipeline
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  # Memory Limiter prevents OOM by dropping or refusing telemetry under memory pressure
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 80
+    spike_limit_percentage: 20
+
+  # Batching aggregates spans/metrics/logs to optimize network throughput
+  batch:
+    send_batch_size: 1024
+    timeout: 1s
+    send_batch_max_size: 2048
+
+  # Resource processor ensures standardized environment and service metadata
+  resource:
+    attributes:
+      - key: deployment.environment
+        value: "production"
+        action: insert
+      - key: service.namespace
+        value: "ep-enterprise"
+        action: insert
+
+  # Transform / Filter processor to scrub PII from spans and attributes
+  transform:
+    error_mode: ignore
+    log_statements:
+      - context: log
+        statements:
+          - replace_pattern(attributes["email"], "^.*$", "[REDACTED_EMAIL]")
+          - replace_pattern(attributes["authorization"], "^.*$", "[REDACTED_AUTH]")
+
+exporters:
+  # OTLP exporter to persistent telemetry backend (Jaeger, Tempo, Prometheus, SigNoz)
+  otlp:
+    endpoint: "telemetry-backend:4317"
+    tls:
+      insecure: false
+      ca_file: /etc/ssl/certs/ca-certificates.crt
+
+  # Prometheus metrics scrape endpoint
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+    namespace: "ep"
+    send_timestamps: true
+
+  # Debug logging exporter (useful in development/staging)
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch, resource]
+      exporters: [otlp, debug]
+
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch, resource]
+      exporters: [prometheus, debug]
+
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, transform, batch, resource]
+      exporters: [otlp, debug]
+
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      address: 0.0.0.0:8888

@@ -155,6 +155,10 @@ Do not load all reference files simultaneously. Read on demand based on current 
 - `references/vcs-pr-protocol.md` — Monorepo git worktrees, Conventional Commits, 4-tier branches, 2-Pass PR Self-Audit.
 - `references/documentation-system.md` — Change Surface lifecycle, ADRs, topology graphing (`ep graph`).
 - `references/nc-protocol.md` — NEED_CLARIFICATION schema, lifecycle, 14-day escalation mechanics.
+- `references/deep-observability.md` — Golden Signals, RED/USE methods, W3C Trace Context propagation, Metric Cardinality Bounding, RUM & Synthetics.
+- `references/compliance-matrix.md` — SOC 2, ISO 27001, GDPR, data classification tiers, and immutable mutation audit logging.
+- `references/optional-tooling.md` — Integration standards & fallback contracts for k6, OTel Collector, Infracost, OPA/Conftest, Chaos Mesh.
+- `references/exclusions.md` — Principled architectural exclusions (Vendor Viability, Continuous Profiling daemon, eBPF).
 
 ---
 
@@ -195,6 +199,13 @@ ep pr create-prod [--title <title>] [--body <body>]
 ep release create <version>
 ep release finalize --prod
 ep milestone status
+
+# Operational Engineering, SLOs, DORA & Performance
+ep slo [--file <path>]
+ep codeowners [--root <dir>]
+ep dora [--days <count>]
+ep iac [--dir <path>]
+ep perf [--script <path>] [--target-url <url>] [--dry-run]
 
 # Sessions, State Machines & Concurrency
 ep session save --session-id <id> --task <task> --mode <mode>

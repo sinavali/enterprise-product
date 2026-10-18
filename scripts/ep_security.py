@@ -255,3 +255,118 @@ def cmd_license(args: argparse.Namespace) -> int:
 
     print("[PASS] License Compliance: Zero copyleft license violations detected.")
     return 0
+
+
+def scan_iac_files(target_dir: str = ".") -> List[Dict[str, Any]]:
+    findings = []
+    for root, dirs, files in os.walk(target_dir):
+        dirs[:] = [d for d in dirs if d not in EXCLUDED_SCAN_DIRS and not d.startswith(".")]
+        for f in files:
+            path = os.path.join(root, f)
+            norm_path = path.replace("\\", "/")
+            lower_name = f.lower()
+
+            # Dockerfile checks
+            if "dockerfile" in lower_name or f.endswith(".dockerfile"):
+                try:
+                    with open(path, "r", encoding="utf-8", errors="ignore") as fh:
+                        lines = fh.readlines()
+                    has_user = False
+                    for idx, line in enumerate(lines, start=1):
+                        clean = line.strip()
+                        if clean.startswith("#"):
+                            continue
+                        if re.match(r"^FROM\s+[^\s:]+(:latest)?(\s+AS\s+.*)?$", clean, re.IGNORECASE):
+                            findings.append({
+                                "file": norm_path,
+                                "line": idx,
+                                "severity": "warning",
+                                "rule": "IAC-DOCKER-LATEST-TAG",
+                                "description": "Base image tag is ':latest' or unpinned. Use explicit SHA256 digest or immutable SemVer tag.",
+                            })
+                        if re.match(r"^USER\s+", clean, re.IGNORECASE):
+                            user_val = clean.split()[1].strip().lower()
+                            if user_val in ("root", "0"):
+                                findings.append({
+                                    "file": norm_path,
+                                    "line": idx,
+                                    "severity": "blocking",
+                                    "rule": "IAC-DOCKER-ROOT-USER",
+                                    "description": "Container explicitly executes as root user.",
+                                })
+                            else:
+                                has_user = True
+                        if re.search(r"^ARG\s+.*(secret|password|token|key|private)", clean, re.IGNORECASE):
+                            findings.append({
+                                "file": norm_path,
+                                "line": idx,
+                                "severity": "blocking",
+                                "rule": "IAC-DOCKER-SECRET-BUILD-ARG",
+                                "description": "Sensitive credential passed via Docker build ARG; will leak in image layers.",
+                            })
+                    if not has_user and len(lines) > 2:
+                        findings.append({
+                            "file": norm_path,
+                            "line": len(lines),
+                            "severity": "blocking",
+                            "rule": "IAC-DOCKER-NO-USER-DIRECTIVE",
+                            "description": "Dockerfile lacks non-root USER instruction; runs as root by default.",
+                        })
+                except Exception:
+                    pass
+
+            # Kubernetes / Compose YAML checks
+            elif lower_name.endswith((".yaml", ".yml")) and any(p in norm_path for p in ["k8s", "deploy", "helm", "manifests", "docker-compose", "compose"]):
+                if "template" in lower_name:
+                    continue
+                try:
+                    with open(path, "r", encoding="utf-8", errors="ignore") as fh:
+                        content = fh.read()
+                    for idx, line in enumerate(content.splitlines(), start=1):
+                        if re.search(r"privileged:\s*true", line, re.IGNORECASE):
+                            findings.append({
+                                "file": norm_path,
+                                "line": idx,
+                                "severity": "blocking",
+                                "rule": "IAC-K8S-PRIVILEGED-CONTAINER",
+                                "description": "Container executes in privileged mode; violates container isolation.",
+                            })
+                        if re.search(r"hostNetwork:\s*true", line, re.IGNORECASE):
+                            findings.append({
+                                "file": norm_path,
+                                "line": idx,
+                                "severity": "blocking",
+                                "rule": "IAC-K8S-HOST-NETWORK",
+                                "description": "Pod configured with hostNetwork: true; bypasses network namespace isolation.",
+                            })
+                except Exception:
+                    pass
+    return findings
+
+
+def cmd_iac(args: argparse.Namespace) -> int:
+    target_dir = getattr(args, "dir", ".") or "."
+    findings = scan_iac_files(target_dir)
+
+    print("=== EP-OS Infrastructure as Code (IaC) Security Gate ===")
+    print(f"Scanning target directory: '{target_dir}'...\n")
+
+    if not findings:
+        print("[PASS] IaC Gate: Zero container or orchestration security misconfigurations found.")
+        return 0
+
+    blocking_count = sum(1 for f in findings if f["severity"] == "blocking")
+    warning_count = len(findings) - blocking_count
+
+    for f in findings:
+        icon = "❌" if f["severity"] == "blocking" else "⚠️"
+        print(f"  {icon} [{f['rule']}] at {f['file']}:{f['line']}")
+        print(f"     Note: {f['description']}")
+
+    print(f"\nIaC Scan Complete: {blocking_count} blocking defect(s), {warning_count} warning(s).")
+    if blocking_count > 0:
+        print("[FAIL] Blocking IaC violations detected. Mitigate root user execution and privileged settings before deployment.", file=sys.stderr)
+        return 1
+
+    return 0
+

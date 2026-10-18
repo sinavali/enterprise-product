@@ -1,0 +1,60 @@
+# Service Level Objectives (SLO) Specification
+# Schema: EP-OS Monitoring & Observability Standard
+
+service: "{{SERVICE_NAME}}"
+tier: "tier-1" # tier-1: critical business path | tier-2: asynchronous / non-blocking
+owner_team: "{{TEAM_NAME}}"
+
+slos:
+  - id: "availability"
+    name: "Service Availability (Success Rate)"
+    description: "Proportion of non-5xx responses over total valid requests excluding client errors (4xx)."
+    target: 0.999 # 99.9% availability
+    window: "30d" # Rolling 30-day window
+    sli:
+      metric_type: "ratio"
+      numerator_query: 'sum(rate(http_requests_total{service="{{SERVICE_NAME}}",status!~"5.."}[5m]))'
+      denominator_query: 'sum(rate(http_requests_total{service="{{SERVICE_NAME}}"}[5m]))'
+    error_budget:
+      budget_percentage: 0.001 # 0.1% allowed failure (43m 12s per month)
+      alert_triggers:
+        - burn_rate: 14.4 # Consumes 100% budget in 2 days -> PagerDuty alert
+          short_window: "5m"
+          long_window: "1h"
+          severity: "critical"
+        - burn_rate: 6.0 # Consumes 100% budget in 5 days -> Slack notification
+          short_window: "30m"
+          long_window: "6h"
+          severity: "warning"
+
+  - id: "latency_p95"
+    name: "p95 Transaction Latency"
+    description: "Proportion of valid API requests resolved within 100 milliseconds."
+    target: 0.95 # 95% of requests <= 100ms
+    window: "30d"
+    sli:
+      metric_type: "histogram_fraction"
+      query: 'histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{service="{{SERVICE_NAME}}"}[5m])) by (le)) <= 0.100'
+    error_budget:
+      budget_percentage: 0.05
+      alert_triggers:
+        - burn_rate: 10.0
+          short_window: "10m"
+          long_window: "2h"
+          severity: "warning"
+
+  - id: "background_processing_freshness"
+    name: "Outbox Queue Processing Latency"
+    description: "Proportion of domain outbox events delivered within 2 seconds of aggregate commit."
+    target: 0.99
+    window: "7d"
+    sli:
+      metric_type: "latency_quantile"
+      query: 'histogram_quantile(0.99, sum(rate(outbox_event_delivery_latency_seconds_bucket{service="{{SERVICE_NAME}}"}[5m])) by (le)) <= 2.0'
+    error_budget:
+      budget_percentage: 0.01
+      alert_triggers:
+        - burn_rate: 5.0
+          short_window: "15m"
+          long_window: "4h"
+          severity: "warning"

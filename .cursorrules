@@ -79,6 +79,7 @@ When executing tasks, follow these operational velocity rules:
 | `sync` | Validate multi-tier branch alignment (`main`, `test`, `stage`, `prod`) | `ep vcs sync-check` |
 | `release` | Orchestrate SemVer bumps and signed release tags | `ep release create` / `ep release finalize` |
 | `adopt` | Brownfield monorepo onboarding and baseline ratcheting | `ep adopt --apply` |
+| `ops` | Operational readiness, SLO validation, code ownership, DORA & perf | `ep slo`, `ep codeowners`, `ep dora`, `ep iac`, `ep perf` |
 
 ---
 

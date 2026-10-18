@@ -80,6 +80,15 @@ stack: "{lang}"
 scope: "{scope}"
 owner: "engineering"
 tier_overrides: []
+dr:
+  rto: "1h"
+  rpo: "15m"
+slo:
+  tier: "tier-1"
+  availability_target: "0.999"
+resources:
+  cpu_limit: "1000m"
+  memory_limit: "1Gi"
 ---
 
 # Project Agent Manifest: {name}

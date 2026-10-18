@@ -77,6 +77,7 @@ def parse_agent_yaml(content: str) -> Tuple[Dict, str]:
     data = {"tier_overrides": []}
     current_list = None
     current_dict_item = None
+    current_parent_key = None
 
     for line in yaml_text.splitlines():
         line = line.rstrip()
@@ -97,14 +98,19 @@ def parse_agent_yaml(content: str) -> Tuple[Dict, str]:
             continue
 
         sub_kv_match = re.match(r"^\s+([a-zA-Z0-9_-]+):\s*(.*)$", line)
-        if sub_kv_match and current_dict_item is not None:
+        if sub_kv_match:
             k = sub_kv_match.group(1).strip()
             raw_v = sub_kv_match.group(2).strip()
             if "#" in raw_v:
                 m = re.match(r"^([\"'].*?[\"'])\s*(?:#.*)?$", raw_v)
                 raw_v = m.group(1) if m else raw_v.split("#", 1)[0].strip()
             v = raw_v.strip("\"'")
-            current_dict_item[k] = v
+            if current_dict_item is not None:
+                current_dict_item[k] = v
+            elif current_parent_key is not None:
+                if not isinstance(data.get(current_parent_key), dict):
+                    data[current_parent_key] = {}
+                data[current_parent_key][k] = v
             continue
 
         # Top-level key
@@ -121,12 +127,15 @@ def parse_agent_yaml(content: str) -> Tuple[Dict, str]:
                 if k == "tier_overrides":
                     data[k] = []
                     current_list = k
+                    current_parent_key = None
                 else:
-                    data[k] = []
+                    data[k] = {}
                     current_list = None
+                    current_parent_key = k
             else:
                 data[k] = v
                 current_list = None
+                current_parent_key = None
 
     return data, body
 
@@ -177,6 +186,12 @@ def verify_agent_manifest(
             sc = str(frontmatter.get("scope", "")).lower()
             if sc and sc not in ALLOWED_SCOPES:
                 errors.append(f"Invalid scope '{sc}'. Must be one of: {', '.join(sorted(ALLOWED_SCOPES))}")
+
+            # Validate optional operational & resilience metadata if present
+            if "slo" in frontmatter and isinstance(frontmatter["slo"], dict):
+                slo_tier = frontmatter["slo"].get("tier")
+                if slo_tier and slo_tier not in ("tier-1", "tier-2", "tier-3"):
+                    errors.append(f"Invalid frontmatter slo.tier '{slo_tier}'. Must be tier-1, tier-2, or tier-3.")
 
     # Check tier overrides (for both root and subproject manifests if present)
     overrides = frontmatter.get("tier_overrides", []) if frontmatter else []

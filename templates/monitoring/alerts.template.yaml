@@ -1,0 +1,73 @@
+# Prometheus / Alertmanager Rule Definitions
+# Standard Golden Signals & Error Budget Alerts for EP-OS Services
+
+groups:
+  - name: "{{SERVICE_NAME}}-golden-signals"
+    rules:
+      - alert: ServiceHigh5xxRate
+        expr: |
+          (
+            sum(rate(http_requests_total{service="{{SERVICE_NAME}}",status=~"5.."}[5m]))
+            /
+            sum(rate(http_requests_total{service="{{SERVICE_NAME}}"}[5m]))
+          ) > 0.01
+        for: 2m
+        labels:
+          severity: critical
+          service: "{{SERVICE_NAME}}"
+          dimension: "reliability"
+        annotations:
+          summary: "Service {{SERVICE_NAME}} 5xx error rate is elevated (> 1%)"
+          description: "High error rate detected over 5-minute sliding window. Runbook: docs/runbooks/{{SERVICE_NAME}}.md"
+
+      - alert: ServiceLatencyDegradationP95
+        expr: |
+          histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{service="{{SERVICE_NAME}}"}[5m])) by (le)) > 0.250
+        for: 5m
+        labels:
+          severity: warning
+          service: "{{SERVICE_NAME}}"
+          dimension: "performance"
+        annotations:
+          summary: "Service {{SERVICE_NAME}} p95 latency exceeds 250ms"
+          description: "p95 latency is degraded. Check database query performance and connection pool saturation."
+
+      - alert: DatabaseConnectionPoolSaturation
+        expr: |
+          (
+            db_connections_active{service="{{SERVICE_NAME}}"}
+            /
+            db_connections_max{service="{{SERVICE_NAME}}"}
+          ) > 0.85
+        for: 3m
+        labels:
+          severity: critical
+          service: "{{SERVICE_NAME}}"
+          dimension: "scalability"
+        annotations:
+          summary: "Database connection pool utilization exceeds 85%"
+          description: "Connection pool is near exhaustion. Investigate unindexed queries or connection leaks."
+
+      - alert: CircuitBreakerTripped
+        expr: |
+          circuit_breaker_state{service="{{SERVICE_NAME}}",state="open"} == 1
+        for: 1m
+        labels:
+          severity: warning
+          service: "{{SERVICE_NAME}}"
+          dimension: "fault_tolerance"
+        annotations:
+          summary: "Circuit breaker is OPEN for downstream dependency"
+          description: "Service has tripped circuit breaker to protect against cascading failure. Downstream dependency is degraded."
+
+      - alert: ConsumerGroupLagCritical
+        expr: |
+          kafka_consumergroup_lag{service="{{SERVICE_NAME}}"} > 10000
+        for: 10m
+        labels:
+          severity: warning
+          service: "{{SERVICE_NAME}}"
+          dimension: "backpressure"
+        annotations:
+          summary: "Event consumer group lag exceeds 10,000 messages"
+          description: "Consumer cannot keep pace with producer throughput. Check worker CPU saturation or poison message retries."

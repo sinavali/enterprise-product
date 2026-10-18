@@ -27,9 +27,10 @@ try:
     from scripts.ep_adopt import cmd_adopt
     from scripts.ep_ast import cmd_ast
     from scripts.ep_hooks import cmd_hooks
+    from scripts.ep_ops import cmd_codeowners, cmd_dora, cmd_perf, cmd_slo
     from scripts.ep_runner import cmd_run, cmd_run_many
     from scripts.ep_scaffold import cmd_init, cmd_manifest, cmd_preflight, cmd_worktree
-    from scripts.ep_security import cmd_license, cmd_security
+    from scripts.ep_security import cmd_iac, cmd_license, cmd_security
     from scripts.ep_session import cmd_session
     from scripts.ep_stack import STACK_DEFINITIONS, detect_stack
     from scripts.ep_sync import cmd_sync_skill
@@ -46,9 +47,10 @@ except ImportError:
     from ep_adopt import cmd_adopt
     from ep_ast import cmd_ast
     from ep_hooks import cmd_hooks
+    from ep_ops import cmd_codeowners, cmd_dora, cmd_perf, cmd_slo
     from ep_runner import cmd_run, cmd_run_many
     from ep_scaffold import cmd_init, cmd_manifest, cmd_preflight, cmd_worktree
-    from ep_security import cmd_license, cmd_security
+    from ep_security import cmd_iac, cmd_license, cmd_security
     from ep_session import cmd_session
     from ep_stack import STACK_DEFINITIONS, detect_stack
     from ep_sync import cmd_sync_skill
@@ -592,6 +594,30 @@ def main():
     p_run_many.add_argument("--parallel", action="store_true", help="Execute targets concurrently")
     p_run_many.add_argument("--root", default=".", help="Monorepo root directory")
 
+    # iac
+    p_iac = subparsers.add_parser("iac", help="Infrastructure as Code (IaC) container & orchestration security gate")
+    p_iac.add_argument("--dir", default=".", help="Directory to scan")
+
+    # slo
+    p_slo = subparsers.add_parser("slo", help="Validate Service Level Objective (SLO) definitions and error budgets")
+    p_slo.add_argument("--file", default=None, help="Path to specific SLO YAML file")
+
+    # codeowners
+    p_co = subparsers.add_parser("codeowners", help="Audit monorepo code ownership and CODEOWNERS coverage")
+    p_co.add_argument("--root", default=".", help="Monorepo root directory")
+
+    # dora
+    p_dora = subparsers.add_parser("dora", help="Calculate git-derived DORA metrics (Deployment Frequency, CFR)")
+    p_dora.add_argument("--days", type=int, default=30, help="Number of days of history to analyze")
+
+    # perf
+    p_perf = subparsers.add_parser("perf", help="Run standard k6 performance and stress tests")
+    p_perf.add_argument("--script", default=None, help="Path to k6 test script")
+    p_perf.add_argument("--target-url", default=None, help="Base target URL")
+    p_perf.add_argument("--vus", type=int, default=10, help="Virtual users")
+    p_perf.add_argument("--duration", default="10s", help="Duration string")
+    p_perf.add_argument("--dry-run", action="store_true", help="Validate script and execution engine without invoking HTTP requests")
+
     args = parser.parse_args()
 
     if not args.subcommand:
@@ -671,6 +697,16 @@ def main():
         sys.exit(cmd_run(args))
     elif args.subcommand == "run-many":
         sys.exit(cmd_run_many(args))
+    elif args.subcommand == "iac":
+        sys.exit(cmd_iac(args))
+    elif args.subcommand == "slo":
+        sys.exit(cmd_slo(args))
+    elif args.subcommand == "codeowners":
+        sys.exit(cmd_codeowners(args))
+    elif args.subcommand == "dora":
+        sys.exit(cmd_dora(args))
+    elif args.subcommand == "perf":
+        sys.exit(cmd_perf(args))
 
 
 if __name__ == "__main__":

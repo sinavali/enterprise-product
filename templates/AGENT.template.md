@@ -5,6 +5,15 @@ stack: "[runtime-and-language, e.g. node-ts-20 | go-1.22 | dotnet-8 | flutter-3.
 scope: "backend"                      # backend | frontend | mobile | shared
 owner: "[team-or-domain-owner]"
 tier_overrides: []
+dr:
+  rto: "1h"
+  rpo: "15m"
+slo:
+  tier: "tier-1"
+  availability_target: "0.999"
+resources:
+  cpu_limit: "1000m"
+  memory_limit: "1Gi"
 # Example tier_override entry:
 #  - rule: "domain-test-coverage"
 #    adr_reference: "docs/adr/0014-example.md"

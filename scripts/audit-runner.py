@@ -41,6 +41,14 @@ HEURISTIC_RULES = [
         "content_regex": r"(\.findAll\(\s*\)|\.find\(\{\s*\}\)|SELECT\s+\*\s+FROM\s+[a-zA-Z0-9_]+(?:\s*;|\s*[\"\'`\n]|\s*$))",
     },
     {
+        "dim": 1,
+        "id": "RULE-1.5-MUTABLE-GLOBAL-STATE",
+        "severity": "suggestion",
+        "description": "Mutable global or module-level state detected in request handler or controller; breaks statelessness.",
+        "path_regex": r"(controllers|handlers|api|routes)[\\/].*\.(ts|js|py)$",
+        "content_regex": r"^(?:var|let)\s+(?:sessions?|tokens?|cache|state|users?)\s*=\s*(?:\{|\[)|^(?:sessions?|global_cache|shared_state)\s*=\s*(?:\{|\[)",
+    },
+    {
         "dim": 2,
         "id": "RULE-2.1-ORM-IN-DOMAIN",
         "severity": "blocking",
@@ -55,6 +63,14 @@ HEURISTIC_RULES = [
         "description": "Unbounded or infinite retry loop without max retry cap or backoff.",
         "path_regex": r"\.(ts|tsx|js|jsx|go|cs|php|py|rs|dart|java|kt)$",
         "content_regex": r"(retries:\s*Infinity|maxRetries:\s*-1|while\s*\(true\)\s*\{\s*try)",
+    },
+    {
+        "dim": 3,
+        "id": "RULE-3.7-UNBOUNDED-QUEUE-PREFETCH",
+        "severity": "suggestion",
+        "description": "Queue consumer prefetch or concurrency configured without bounded limit; risk of OOM under backpressure.",
+        "path_regex": r"(consumers|queues|subscribers|workers)[\\/].*\.(ts|js|py|go|cs)$",
+        "content_regex": r"(prefetch:\s*0\b|noAck:\s*true\b|prefetch_count\s*=\s*0\b|Prefetch\(\s*0\s*\))",
     },
     {
         "dim": 4,
@@ -97,6 +113,14 @@ HEURISTIC_RULES = [
         "content_regex": r"(log|logger|console|_logger)\.(info|debug|warn|warning|error|exception|critical|log|LogInformation|LogWarning|LogError)\([^)]*\b(password|user_password|auth_token|credit_card|secret_key)\b",
     },
     {
+        "dim": 6,
+        "id": "RULE-6.7-TRACE-PROPAGATION",
+        "severity": "suggestion",
+        "description": "Outbound HTTP request detected without traceparent / correlation context header propagation.",
+        "path_regex": r"(clients|gateways|adapters|http)[\\/].*\.(ts|js|py)$",
+        "content_regex": r"(axios\.(get|post|put|delete)\([^,\)]+\)|requests\.(get|post|put|delete)\([^,\)]+\))\s*(?:;|\n|$)",
+    },
+    {
         "dim": 8,
         "id": "RULE-8.1-EMPTY-CATCH",
         "severity": "blocking",
@@ -111,6 +135,14 @@ HEURISTIC_RULES = [
         "description": "Untyped 'any' in production TypeScript; use strict types or unknown.",
         "path_regex": r"(services|apps|libs|packages)[\\/].*src[\\/].*\.(ts|tsx)$",
         "content_regex": r":\s*any\b",
+    },
+    {
+        "dim": 8,
+        "id": "RULE-8.6-NAKED-ENV-IN-DOMAIN",
+        "severity": "blocking",
+        "description": "Direct, unvalidated environment variable access in pure domain layer; violates 12-factor typed configuration.",
+        "path_regex": r"domain[\\/].*\.(ts|tsx|js|jsx|go|cs|php|py|rs|dart|java|kt)$",
+        "content_regex": r"(process\.env\b|os\.environ\b|os\.getenv\b|getenv\(|\$_ENV\b|System\.Environment\.GetEnvironmentVariable)",
     },
     {
         "dim": 10,

@@ -8,6 +8,7 @@ invariant verification across polyglot languages (TS, JS, Go, Rust, Python, PHP)
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -17,6 +18,18 @@ AST_GREP_BIN = shutil.which("ast-grep")
 
 # Structural AST Rules for Enterprise Auditing
 STRUCTURAL_AST_RULES = [
+    {
+        "id": "RULE-1.5-AST-MUTABLE-GLOBAL-STATE",
+        "dim": 1,
+        "severity": "suggestion",
+        "description": "Mutable state declared at handler/controller scope; breaks statelessness.",
+        "patterns": [
+            ("typescript", "let $STATE = { $$$ }"),
+            ("javascript", "let $STATE = { $$$ }"),
+            ("python", "$STATE = { $$$ }"),
+        ],
+        "path_filter": lambda p: bool(re.search(r"(controllers|handlers|api|routes)", p, re.IGNORECASE)),
+    },
     {
         "id": "RULE-10.1-AST-TAUTOLOGICAL-TEST",
         "dim": 10,
@@ -42,6 +55,19 @@ STRUCTURAL_AST_RULES = [
             ("javascript", "try { $$$BODY } catch ($ERR) {}"),
         ],
         "path_filter": lambda p: not bool("test" in p.lower() or "mock" in p.lower()),
+    },
+    {
+        "id": "RULE-8.6-AST-ENV-IN-DOMAIN",
+        "dim": 8,
+        "severity": "blocking",
+        "description": "Direct unvalidated environment variable access in pure domain layer.",
+        "patterns": [
+            ("typescript", "process.env.$VAR"),
+            ("javascript", "process.env.$VAR"),
+            ("python", "os.environ[$VAR]"),
+            ("python", "os.getenv($VAR)"),
+        ],
+        "path_filter": lambda p: "domain" in p.replace("\\", "/").split("/"),
     },
     {
         "id": "RULE-3.1-AST-INFINITE-RETRY",
