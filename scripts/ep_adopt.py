@@ -10,6 +10,7 @@ import argparse
 import datetime
 import json
 import os
+import re
 import subprocess
 import sys
 from typing import Any, Dict, List, Optional, Tuple
@@ -66,12 +67,12 @@ def discover_subprojects(root_dir: str = ".") -> List[str]:
 
 
 def infer_scope(project_path: str) -> str:
-    parts = project_path.lower().split("/")
-    if any(p in parts for p in ["backend", "services", "api", "server", "worker"]):
+    tokens = set(re.split(r"[/\\_\-]+", project_path.lower()))
+    if any(t in tokens for t in ["backend", "services", "api", "server", "worker"]):
         return "backend"
-    if any(p in parts for p in ["frontend", "web", "ui", "client"]):
+    if any(t in tokens for t in ["frontend", "web", "ui", "client"]):
         return "frontend"
-    if any(p in parts for p in ["mobile", "app", "ios", "android"]):
+    if any(t in tokens for t in ["mobile", "ios", "android"]) or ("app" in tokens and "apps" not in tokens):
         return "mobile"
     return "shared"
 
@@ -118,9 +119,10 @@ Enforcing Profile {profile.upper()}:
 def scaffold_project_json(project_path: str, stack_info: Dict[str, str], profile: str = "B") -> Dict[str, Any]:
     project_name = os.path.basename(project_path)
     scope = infer_scope(project_path)
+    rel_schema = os.path.relpath("node_modules/nx/schemas/project-schema.json", project_path).replace("\\", "/")
     return {
         "name": project_name,
-        "$schema": "../../node_modules/nx/schemas/project-schema.json",
+        "$schema": rel_schema,
         "projectType": "application" if scope in ("frontend", "mobile") else "service",
         "sourceRoot": f"{project_path}/src",
         "tags": [
@@ -169,7 +171,7 @@ def create_baseline_snapshot(root_dir: str = ".") -> int:
         return 0
 
     cmd = [sys.executable, audit_runner_path, "--scope", root_dir, "--json"]
-    res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    res = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=60)
     findings = []
     if res.returncode in (0, 1):
         try:
@@ -192,7 +194,7 @@ def create_baseline_snapshot(root_dir: str = ".") -> int:
 
 
 def cmd_adopt(args: argparse.Namespace) -> int:
-    root = getattr(args, "root", ".") or "."
+    root = getattr(args, "scope", None) or getattr(args, "root", ".") or "."
     profile = getattr(args, "profile", "B") or "B"
     dry_run = getattr(args, "dry_run", False)
 

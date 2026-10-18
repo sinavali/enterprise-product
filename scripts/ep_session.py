@@ -13,6 +13,15 @@ import sys
 from typing import Dict, List, Optional, Set, Tuple
 
 
+def parse_porcelain_line(line: str) -> Optional[str]:
+    if len(line) >= 4:
+        raw_path = line[3:].strip()
+        if " -> " in raw_path:
+            return raw_path.split(" -> ")[1].strip()
+        return raw_path
+    return None
+
+
 def cmd_session(args: argparse.Namespace) -> int:
     session_root = ".ep/sessions"
     os.makedirs(session_root, exist_ok=True)
@@ -33,8 +42,12 @@ def cmd_session(args: argparse.Namespace) -> int:
 
         branch_res = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, check=False)
         current_branch = branch_res.stdout.strip() if branch_res.returncode == 0 else "unknown"
-        status_res = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, check=False)
-        modified = [line[3:].strip() for line in status_res.stdout.splitlines() if line.strip()]
+        status_res = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, check=False, timeout=30)
+        modified = []
+        for line in status_res.stdout.splitlines():
+            p = parse_porcelain_line(line)
+            if p:
+                modified.append(p)
 
         state = {
             "session_id": session_id,

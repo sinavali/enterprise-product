@@ -14,6 +14,27 @@ import subprocess
 import sys
 from typing import Any, Dict, List, Optional, Tuple
 
+try:
+    from scripts.ep_stack import STACK_DEFINITIONS
+except ImportError:
+    from ep_stack import STACK_DEFINITIONS
+
+LANG_ALIASES = {
+    "c#": "dotnet",
+    "cs": "dotnet",
+    "csharp": "dotnet",
+    "golang": "go",
+    "rs": "rust",
+    "py": "python",
+    "ts": "ts",
+    "typescript": "ts",
+    "node": "ts",
+    "nodejs": "ts",
+    "flutter": "dart",
+    "c++": "cpp",
+    "c": "cpp",
+}
+
 
 def cmd_init(args: argparse.Namespace) -> int:
     name = args.name
@@ -61,17 +82,28 @@ def cmd_init(args: argparse.Namespace) -> int:
                 project_json = None
 
     if not project_json:
+        rel_schema = os.path.relpath("node_modules/nx/schemas/project-schema.json", target_dir).replace("\\", "/")
+        norm_lang = LANG_ALIASES.get(lang, lang)
+        stack_entry = next((s for s in STACK_DEFINITIONS if s[0] == norm_lang), None)
+        if stack_entry:
+            _, _, lint_c, test_c, build_c, audit_c = stack_entry
+        else:
+            lint_c = f"echo 'Linting {name}...'"
+            test_c = f"echo 'Testing {name}...'"
+            build_c = f"echo 'Building {name}...'"
+            audit_c = f"echo 'Auditing {name}...'"
+
         project_json = {
             "name": name,
-            "$schema": "../../node_modules/nx/schemas/project-schema.json",
+            "$schema": rel_schema,
             "projectType": "application" if profile != "D" else "library",
             "sourceRoot": f"{target_dir}/src",
-            "tags": [f"profile:{profile.lower()}", f"scope:{scope}", f"lang:{lang}"],
+            "tags": [f"profile:{profile.lower()}", f"scope:{scope}", f"lang:{norm_lang}"],
             "targets": {
-                "lint": {"executor": "nx:run-commands", "options": {"command": f"echo 'Linting {name}...'"}},
-                "test": {"executor": "nx:run-commands", "options": {"command": f"echo 'Testing {name}...'"}},
-                "build": {"executor": "nx:run-commands", "options": {"command": f"echo 'Building {name}...'"}},
-                "audit": {"executor": "nx:run-commands", "options": {"command": f"echo 'Auditing {name}...'"}},
+                "lint": {"executor": "nx:run-commands", "options": {"command": lint_c, "cwd": target_dir}},
+                "test": {"executor": "nx:run-commands", "options": {"command": test_c, "cwd": target_dir}},
+                "build": {"executor": "nx:run-commands", "options": {"command": build_c, "cwd": target_dir}},
+                "audit": {"executor": "nx:run-commands", "options": {"command": audit_c, "cwd": target_dir}},
             },
         }
     with open(os.path.join(target_dir, "project.json"), "w", encoding="utf-8") as f:
@@ -143,7 +175,7 @@ def cmd_worktree(args: argparse.Namespace) -> int:
     if action == "create":
         worktree_path = f"../worktrees/{branch.replace('/', '-')}"
         print(f"Creating isolated monorepo worktree for branch '{branch}' at '{worktree_path}'...")
-        res = subprocess.run(["git", "worktree", "add", worktree_path, "-b", branch], check=False)
+        res = subprocess.run(["git", "worktree", "add", worktree_path, "-b", branch], check=False, timeout=30)
         if res.returncode != 0:
             return res.returncode
         print(f"[OK] Worktree created at {worktree_path}. Run 'cd {worktree_path} && pnpm install --frozen-lockfile'.")
@@ -152,8 +184,8 @@ def cmd_worktree(args: argparse.Namespace) -> int:
     elif action == "remove":
         worktree_path = f"../worktrees/{branch.replace('/', '-')}"
         print(f"Removing monorepo worktree at '{worktree_path}'...")
-        res = subprocess.run(["git", "worktree", "remove", worktree_path], check=False)
-        subprocess.run(["git", "worktree", "prune"], check=False)
+        res = subprocess.run(["git", "worktree", "remove", worktree_path], check=False, timeout=30)
+        subprocess.run(["git", "worktree", "prune"], check=False, timeout=30)
         return res.returncode
 
     return 0
@@ -199,14 +231,21 @@ def cmd_manifest(args: argparse.Namespace) -> int:
 
 def cmd_preflight(args: argparse.Namespace) -> int:
     checks = []
-    try:
-        res = subprocess.run(["bash", "-c", "echo ok"], capture_output=True, text=True, check=False)
-        checks.append(("Shell Execution (`bash`)", res.returncode == 0 and "ok" in res.stdout))
-    except Exception:
-        checks.append(("Shell Execution (`bash`)", False))
+    shell_ok = False
+    shell_name = "None"
+    for sh, cmd_args in [("bash", ["bash", "-c", "echo ok"]), ("powershell", ["powershell", "-Command", "Write-Output ok"]), ("cmd", ["cmd", "/c", "echo ok"])]:
+        try:
+            res = subprocess.run(cmd_args, capture_output=True, text=True, check=False, timeout=10)
+            if res.returncode == 0 and "ok" in res.stdout.lower():
+                shell_ok = True
+                shell_name = sh
+                break
+        except Exception:
+            continue
+    checks.append((f"Shell Execution (`{shell_name}`)", shell_ok))
 
     try:
-        res = subprocess.run(["git", "--version"], capture_output=True, text=True, check=False)
+        res = subprocess.run(["git", "--version"], capture_output=True, text=True, check=False, timeout=10)
         checks.append(("Version Control (`git`)", res.returncode == 0))
     except Exception:
         checks.append(("Version Control (`git`)", False))

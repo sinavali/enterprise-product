@@ -45,6 +45,18 @@ TIER_1_BANNED_OVERRIDES = {
     "no-agent-prod-merge",
 }
 
+TIER_1_BANNED_STEMS = [
+    (r"sqlite", "No SQLite in integration tests"),
+    (r"container", "Real containers required for integration tests"),
+    (r"(prod.*merge|merge.*prod|auto.*merge)", "Human-only production merge"),
+    (r"utc", "UTC timestamp storage convention"),
+    (r"(mvp|stub)", "Zero-stub / Anti-MVP production rigor"),
+    (r"(expand.*contract|contract.*expand|skip.*migration)", "Expand/Contract database migrations"),
+    (r"(14-?day|nc-?block|non-?conformance)", "14-day non-conformance block"),
+    (r"change-?surface", "Mandatory Change Surface"),
+    (r"(pure-?domain|domain-?isolation)", "Pure Domain / DDD isolation"),
+]
+
 REQUIRED_SECTIONS = [
     r"1\.\s*Scope\s*(&|and)?\s*Business\s*Intent",
     r"2\.\s*Architectural\s*Profile",
@@ -208,7 +220,8 @@ def verify_agent_manifest(
                 continue
             rule = ov.get("rule", "")
             norm_rule = rule.lower().strip().replace("_", "-").replace(" ", "-")
-            if norm_rule in TIER_1_BANNED_OVERRIDES:
+            is_banned = norm_rule in TIER_1_BANNED_OVERRIDES or any(re.search(pat, norm_rule) for pat, _ in TIER_1_BANNED_STEMS)
+            if is_banned:
                 errors.append(f"Illegal Tier 1 override attempted for rule '{rule}'. Tier 1 rules are inviolable.")
 
             adr = ov.get("adr_reference")

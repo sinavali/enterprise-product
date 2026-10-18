@@ -188,6 +188,34 @@ def uninstall_hooks(repo_root: str = ".") -> int:
     return 0
 
 
+def run_hook(hook_name: str = "pre-commit", repo_root: str = ".") -> int:
+    hooks_dir = find_git_hooks_dir(repo_root)
+    if hooks_dir:
+        hook_path = os.path.join(hooks_dir, hook_name)
+        if os.path.isfile(hook_path):
+            print(f"=== [EP-OS HOOK] Executing '{hook_name}' Hook ===")
+            return subprocess.run([hook_path], check=False, timeout=120).returncode
+
+    # Direct execution fallback (DEFECT-10)
+    print(f"=== [EP-OS HOOK] Executing '{hook_name}' Hook in direct mode ===")
+    ep_bin = os.path.join(repo_root, "scripts", "ep.py")
+    if hook_name == "pre-commit":
+        rc1 = subprocess.run([sys.executable, ep_bin, "security", "scan", "--staged"], check=False, timeout=120).returncode
+        if rc1 != 0:
+            return rc1
+        rc2 = subprocess.run([sys.executable, ep_bin, "migration", "check", "--diff"], check=False, timeout=120).returncode
+        return rc2
+    elif hook_name == "pre-push":
+        rc1 = subprocess.run([sys.executable, ep_bin, "surface", "check-diff", "--strict"], check=False, timeout=120).returncode
+        if rc1 != 0:
+            return rc1
+        rc2 = subprocess.run([sys.executable, ep_bin, "verify"], check=False, timeout=120).returncode
+        if rc2 != 0:
+            return rc2
+        return subprocess.run([sys.executable, ep_bin, "vcs", "sync-check"], check=False, timeout=120).returncode
+    return 0
+
+
 def cmd_hooks(args: argparse.Namespace) -> int:
     action = args.action
     root = getattr(args, "root", ".") or "."
@@ -195,4 +223,7 @@ def cmd_hooks(args: argparse.Namespace) -> int:
         return install_hooks(root)
     elif action == "uninstall":
         return uninstall_hooks(root)
+    elif action == "run":
+        hook_name = getattr(args, "hook_name", None) or "pre-commit"
+        return run_hook(hook_name, root)
     return 0

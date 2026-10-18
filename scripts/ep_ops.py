@@ -18,6 +18,14 @@ import subprocess
 import sys
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+try:
+    from scripts.ep_runner import discover_projects
+except ImportError:
+    try:
+        from ep_runner import discover_projects
+    except ImportError:
+        discover_projects = None
+
 
 # ==============================================================================
 # SUBCOMMAND: ep slo
@@ -112,7 +120,12 @@ def parse_slo_yaml(content: str) -> Dict[str, Any]:
                     elif in_error_budget:
                         if in_alert_triggers and re.match(r"^\s*-\s*burn_rate:\s*(.*)$", line):
                             burn_m = re.match(r"^\s*-\s*burn_rate:\s*(.*)$", line)
-                            current_alert = {"burn_rate": float(clean_yaml_val(burn_m.group(1)).split()[0])}
+                            raw_burn = clean_yaml_val(burn_m.group(1)).split()[0]
+                            try:
+                                burn_val = float(raw_burn)
+                            except (ValueError, IndexError):
+                                burn_val = 1.0
+                            current_alert = {"burn_rate": burn_val}
                             current_slo["error_budget"].setdefault("alert_triggers", []).append(current_alert)
                         elif current_alert is not None and indent >= 8:
                             current_alert[k] = v
@@ -147,7 +160,14 @@ def validate_slo_dict(data: Dict[str, Any], filepath: str) -> List[str]:
     for idx, slo in enumerate(slos, start=1):
         slo_id = slo.get("id") or f"index_{idx}"
         target = slo.get("target")
-        if target is None or not (0.0 < float(target) <= 1.0):
+        target_valid = False
+        try:
+            target_f = float(target)
+            if 0.0 < target_f <= 1.0:
+                target_valid = True
+        except (ValueError, TypeError):
+            pass
+        if not target_valid:
             errors.append(f"{filepath}: SLO [{slo_id}] target '{target}' must be a float between 0.0 and 1.0.")
         if not slo.get("window"):
             errors.append(f"{filepath}: SLO [{slo_id}] missing measurement 'window' (e.g. '30d').")
@@ -245,13 +265,43 @@ def cmd_codeowners(args: argparse.Namespace) -> int:
 
     # Detect monorepo projects
     subprojects: List[Dict[str, str]] = []
+    seen_paths = set()
+    if discover_projects is not None:
+        discovered = discover_projects(root_dir)
+        for proj_name, p_data in discovered.items():
+            proj_path = p_data.get("root", ".")
+            seen_paths.add(os.path.abspath(proj_path))
+            owner = "UNASSIGNED"
+            agent_file = os.path.join(proj_path, "AGENT.md")
+            if os.path.exists(agent_file):
+                with open(agent_file, "r", encoding="utf-8", errors="ignore") as fh:
+                    c = fh.read()
+                    m = re.search(r"owner:\s*([^\n]+)", c, re.IGNORECASE)
+                    if m:
+                        owner = m.group(1).strip().strip("\"'")
+
+            if owner == "UNASSIGNED":
+                rel_path = os.path.relpath(proj_path, root_dir).replace("\\", "/")
+                for pat, r_owner in rules:
+                    clean_pat = pat.lstrip("/").rstrip("/*")
+                    if rel_path == clean_pat or rel_path.startswith(clean_pat):
+                        owner = r_owner
+                        break
+
+            subprojects.append({
+                "name": proj_name,
+                "path": proj_path,
+                "owner": owner,
+            })
+
+    # Also scan candidate root directories for unconfigured/legacy projects
     for candidate_dir in ["services", "apps", "libs", "packages"]:
         full_cand = os.path.join(root_dir, candidate_dir)
         if os.path.isdir(full_cand):
             for d in os.listdir(full_cand):
                 proj_path = os.path.join(full_cand, d)
-                if os.path.isdir(proj_path):
-                    # Check AGENT.md or project.json for declared owner
+                if os.path.isdir(proj_path) and os.path.abspath(proj_path) not in seen_paths:
+                    seen_paths.add(os.path.abspath(proj_path))
                     owner = "UNASSIGNED"
                     agent_file = os.path.join(proj_path, "AGENT.md")
                     if os.path.exists(agent_file):
@@ -262,7 +312,6 @@ def cmd_codeowners(args: argparse.Namespace) -> int:
                                 owner = m.group(1).strip().strip("\"'")
 
                     if owner == "UNASSIGNED":
-                        # Check global CODEOWNERS rules
                         rel_path = os.path.relpath(proj_path, root_dir).replace("\\", "/")
                         for pat, r_owner in rules:
                             clean_pat = pat.lstrip("/").rstrip("/*")
@@ -314,7 +363,7 @@ def cmd_dora(args: argparse.Namespace) -> int:
     since_date = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=days)).isoformat()
     cmd = ["git", "log", f"--since={since_date}", "--pretty=format:%h|%cI|%s"]
     try:
-        res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        res = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=30)
         lines = [l.strip() for l in res.stdout.splitlines() if l.strip()]
     except Exception as e:
         print(f"[ERROR] Failed to read git history: {e}", file=sys.stderr)
@@ -577,7 +626,7 @@ def cmd_perf(args: argparse.Namespace) -> int:
     if k6_bin:
         cmd = [k6_bin, "run", "--vus", str(vus), "--duration", str(duration), "-e", f"TARGET_URL={target_url}", script]
         print(f"[EXEC] Running native k6: {' '.join(cmd)}")
-        return subprocess.run(cmd).returncode
+        return subprocess.run(cmd, timeout=600).returncode
 
     # Check container runtime fallback
     if container_engine:
@@ -593,7 +642,7 @@ def cmd_perf(args: argparse.Namespace) -> int:
             script,
         ]
         print(f"[EXEC] Running containerized k6: {' '.join(cmd)}")
-        return subprocess.run(cmd).returncode
+        return subprocess.run(cmd, timeout=600).returncode
 
     print("[WARN] Neither 'k6' nor an OCI container engine (podman/docker) was detected.", file=sys.stderr)
     print("       Per 'references/optional-tooling.md', performance testing degrades gracefully.", file=sys.stderr)

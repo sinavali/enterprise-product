@@ -73,12 +73,28 @@ HEURISTIC_RULES = [
         "content_regex": r"(prefetch:\s*0\b|noAck:\s*true\b|prefetch_count\s*=\s*0\b|Prefetch\(\s*0\s*\))",
     },
     {
+        "dim": 3,
+        "id": "RULE-3.8-TRANSACTIONAL-OUTBOX-DUAL-WRITE",
+        "severity": "suggestion",
+        "description": "Direct message bus / event publish inside database repository without transactional outbox pattern.",
+        "path_regex": r"(repositories|adapters[\\/]db|persistence)[\\/].*\.(ts|js|py|go|cs)$",
+        "content_regex": r"(\.publish\(|\.send\(|\.produce\().*\b(event|message|topic|queue)\b",
+    },
+    {
         "dim": 4,
         "id": "RULE-4.1-SQLITE-IN-INTEGRATION",
         "severity": "blocking",
         "description": "Banned in-memory SQL emulator (SQLite/H2) substituting production database in integration tests.",
         "path_regex": r"(?:integration[\\/]|tests?[\\/].*integration|[._-]integration\.).*\.(ts|tsx|js|jsx|go|cs|php|py|rs|dart|java|kt)$",
         "content_regex": r"(:memory:|sqlite3\.connect\(['\"]:memory:['\"]\)|UseSqlite\(|createConnection\(\{.*type:\s*['\"]sqlite['\"])",
+    },
+    {
+        "dim": 4,
+        "id": "RULE-4.3-NON-UTC-TIMESTAMP",
+        "severity": "blocking",
+        "description": "Non-UTC clock or un-timezoned timestamp creation in persistence or domain model; violates Tier 1 UTC convention.",
+        "path_regex": r"(domain|models|entities|persistence|db|repositories)[\\/].*\.(ts|js|go|cs|php|py)$",
+        "content_regex": r"(DateTime\.Now\b|datetime\.now\(\)|datetime\.today\(\)|CURRENT_TIMESTAMP\b|TIMESTAMP\s+WITHOUT\s+TIME\s+ZONE)",
     },
     {
         "dim": 5,
@@ -250,7 +266,7 @@ def run_audit(target_dir: str, max_file_lines: int = 800, max_dir_depth: int = 6
 
     if diff_base:
         try:
-            res = subprocess.run(["git", "diff", "--name-only", diff_base], capture_output=True, text=True, check=False)
+            res = subprocess.run(["git", "diff", "--name-only", diff_base], capture_output=True, text=True, check=False, timeout=30)
             if res.returncode == 0:
                 files_to_scan = [f.strip() for f in res.stdout.splitlines() if f.strip() and os.path.exists(f.strip())]
             else:

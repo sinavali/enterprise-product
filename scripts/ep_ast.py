@@ -94,6 +94,30 @@ STRUCTURAL_AST_RULES = [
         ],
         "path_filter": lambda p: "domain" in p.replace("\\", "/").split("/"),
     },
+    {
+        "id": "RULE-1.7-AST-NON-UTC-CLOCK",
+        "dim": 1,
+        "severity": "blocking",
+        "description": "Non-UTC clock or un-timezoned timestamp creation in persistence or domain; violates UTC storage convention.",
+        "patterns": [
+            ("typescript", "new Date()"),
+            ("python", "datetime.now()"),
+            ("python", "datetime.today()"),
+        ],
+        "path_filter": lambda p: not bool(re.search(r"(\.spec\.|\.test\.|_test|tests?[\\/])", p, re.IGNORECASE)),
+    },
+    {
+        "id": "RULE-3.8-AST-TRANSACTIONAL-OUTBOX",
+        "dim": 3,
+        "severity": "suggestion",
+        "description": "Direct message bus / event publish inside database repository without transactional outbox.",
+        "patterns": [
+            ("typescript", "await $BUS.publish($$$ARGS)"),
+            ("typescript", "await $PRODUCER.send($$$ARGS)"),
+            ("python", "$bus.publish($$$ARGS)"),
+        ],
+        "path_filter": lambda p: bool(re.search(r"(repositories|adapters/db|persistence)", p, re.IGNORECASE)),
+    },
 ]
 
 
@@ -110,7 +134,7 @@ def run_ast_query(pattern: str, scope: str = ".", lang: Optional[str] = None) ->
         cmd.extend(["--lang", lang])
 
     try:
-        res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        res = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=30)
         if res.returncode == 0 and res.stdout.strip():
             return json.loads(res.stdout)
     except Exception:

@@ -25,18 +25,32 @@ class BaseGitProvider:
         if not branches:
             branches = ["test", "stage", "prod"]
         issues = []
-        res = subprocess.run(["git", "rev-parse", "--verify", base_branch], capture_output=True, text=True, check=False)
-        if res.returncode != 0:
-            return True, [f"Base branch '{base_branch}' not found locally. Skipping sync-check."]
+        
+        # Verify base branch exists locally or remotely (DEFECT-05)
+        resolved_base = None
+        for cand in [base_branch, f"origin/{base_branch}"]:
+            res = subprocess.run(["git", "rev-parse", "--verify", cand], capture_output=True, text=True, check=False, timeout=30)
+            if res.returncode == 0:
+                resolved_base = cand
+                break
+        
+        if not resolved_base:
+            return False, [f"Base branch '{base_branch}' not found locally or on origin. Cannot perform sync-check."]
 
         for b in branches:
-            res_b = subprocess.run(["git", "rev-parse", "--verify", b], capture_output=True, text=True, check=False)
-            if res_b.returncode != 0:
+            resolved_b = None
+            for cand in [b, f"origin/{b}"]:
+                res_b = subprocess.run(["git", "rev-parse", "--verify", cand], capture_output=True, text=True, check=False, timeout=30)
+                if res_b.returncode == 0:
+                    resolved_b = cand
+                    break
+            if not resolved_b:
                 continue
-            res_ahead = subprocess.run(["git", "rev-list", f"{base_branch}..{b}"], capture_output=True, text=True, check=False)
+
+            res_ahead = subprocess.run(["git", "rev-list", f"{resolved_base}..{resolved_b}"], capture_output=True, text=True, check=False, timeout=30)
             ahead_commits = [c.strip() for c in res_ahead.stdout.splitlines() if c.strip()]
             if ahead_commits:
-                issues.append(f"Branch '{b}' has {len(ahead_commits)} unmerged commits not reachable from '{base_branch}'. Rogue commits violate promotion pipeline!")
+                issues.append(f"Branch '{b}' ({resolved_b}) has {len(ahead_commits)} unmerged commits not reachable from '{base_branch}'. Rogue commits violate promotion pipeline!")
 
         return len(issues) == 0, issues
 
@@ -57,12 +71,19 @@ class GitHubProvider(BaseGitProvider):
             "--base", "prod",
             "--head", head_branch,
             "--title", title,
-            "--body", f"{body}\n\n> [!CAUTION]\n> **STRICT HUMAN-ONLY GATE**: AI agents are forbidden from merging this PR. Auto-merge is disabled."
+            "--body", f"{body}\n\n> [!CAUTION]\n> **STRICT HUMAN-ONLY GATE**: AI agents are forbidden from merging this PR. Auto-merge is disabled.",
+            "--label", "needs/human-review",
         ]
-        res = subprocess.run(cmd, check=False)
+        res = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=60)
         if res.returncode == 0:
-            print("[PASS] Production PR created successfully. Auto-merge is DISABLED.")
+            pr_output = res.stdout.strip()
+            print(f"[PASS] Production PR created successfully: {pr_output}")
+            # Mechanically disable auto-merge on GitHub (DEFECT-06)
+            subprocess.run(["gh", "pr", "merge", "--disable-auto", head_branch], capture_output=True, text=True, check=False, timeout=30)
+            print("[GATE] Auto-merge mechanically disabled via 'gh pr merge --disable-auto'.")
             print("[GATE] Reminder: Merging into 'prod' must be performed by a human engineer.")
+        else:
+            print(f"[ERROR] Failed to create prod PR: {res.stderr.strip()}", file=sys.stderr)
         return res.returncode
 
 

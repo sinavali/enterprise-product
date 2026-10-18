@@ -10,11 +10,24 @@ import argparse
 import hashlib
 import os
 import shutil
+import subprocess
 import sys
 from typing import Dict, List, Set, Tuple
 
 DEFAULT_SKILL_DIR = os.path.expanduser("~/.gemini/config/skills/enterprise-product")
-DEFAULT_WORKSPACE_DIR = "/home/sinavali/Workspace/Work/Projects/enterprise-product"
+
+
+def resolve_default_workspace_dir() -> str:
+    try:
+        res = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False, timeout=10)
+        if res.returncode == 0 and res.stdout.strip():
+            return res.stdout.strip()
+    except Exception:
+        pass
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+DEFAULT_WORKSPACE_DIR = resolve_default_workspace_dir()
 
 TRACKED_SUBDIRS = ["scripts", "references", "templates", "tests"]
 TRACKED_ROOT_FILES = ["SKILL.md", "README.md", "package.json", "tsconfig.json"]

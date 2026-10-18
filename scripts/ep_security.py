@@ -7,12 +7,29 @@ and copyleft license contagion.
 """
 
 import argparse
+import collections
+import datetime
 import json
+import math
 import os
 import re
 import subprocess
 import sys
 from typing import Any, Dict, List, Optional, Set, Tuple
+
+
+def shannon_entropy(data: str) -> float:
+    """Calculates the Shannon entropy (bits per character) of a string."""
+    if not data:
+        return 0.0
+    entropy = 0.0
+    length = len(data)
+    counts = collections.Counter(data)
+    for count in counts.values():
+        p = count / length
+        entropy -= p * math.log2(p)
+    return entropy
+
 
 # Comprehensive credential & secret detection regexes
 SECRET_PATTERNS = [
@@ -48,8 +65,13 @@ SECRET_PATTERNS = [
     ),
     (
         "Hardcoded Secret / API Key Assignment",
-        re.compile(r"\b(api_key|apikey|secret_key|secretkey|auth_token|client_secret)\s*[:=]\s*['\"]([A-Za-z0-9_\-\.]{20,})['\"]", re.IGNORECASE),
+        re.compile(r"\b(api_key|apikey|secret_key|secretkey|auth_token|client_secret)\s*[:=]\s*['\"]?([A-Za-z0-9_\-\./+=]{20,})['\"]?", re.IGNORECASE),
         "High-entropy hardcoded secret assignment detected.",
+    ),
+    (
+        "AWS Secret Access Key",
+        re.compile(r"(?<![A-Za-z0-9/+=])[A-Za-z0-9/+=]{40}(?![A-Za-z0-9/+=])"),
+        "High-entropy AWS Secret Access Key or Base64 secret detected.",
     ),
 ]
 
@@ -88,11 +110,18 @@ def mask_secret(secret_str: str) -> str:
     return secret_str[:4] + "*" * (len(secret_str) - 8) + secret_str[-4:]
 
 
+def is_test_path(filename: str) -> bool:
+    norm_fn = filename.replace("\\", "/").lower()
+    is_test_dir = bool(re.search(r"(^|/)(tests?|specs?|fixtures?|mocks?|__tests?__)(/|$)", norm_fn))
+    is_test_file = bool(re.search(r"\.(spec|test)\.[a-zA-Z0-9]+$", norm_fn))
+    is_template = bool(re.search(r"\.template\.[a-zA-Z0-9]+$", norm_fn) or re.search(r"(^|/)templates?/", norm_fn))
+    return is_test_dir or is_test_file or is_template
+
+
 def scan_text_for_secrets(text: str, filename: str = "") -> List[Dict[str, Any]]:
     findings = []
-    # Skip test files and template files from false-positive tripping on placeholders
-    norm_fn = filename.replace("\\", "/").lower()
-    if any(p in norm_fn for p in ["test", "spec", "template", "fixture", "mock"]):
+    # Skip test files and template files from false-positive tripping on placeholders (DEFECT-04)
+    if is_test_path(filename):
         return findings
 
     for line_num, line in enumerate(text.splitlines(), start=1):
@@ -103,6 +132,11 @@ def scan_text_for_secrets(text: str, filename: str = "") -> List[Dict[str, Any]]
                 # Filter out obvious templates and placeholders
                 if any(p in matched_val.upper() for p in ["EXAMPLE", "PLACEHOLDER", "YOUR_", "DUMMY", "TEST", "ENV["]):
                     continue
+                # For AWS Secret Access Key or general Base64, require Shannon entropy >= 4.5 (DEFECT-17)
+                if name == "AWS Secret Access Key":
+                    ent = shannon_entropy(matched_val)
+                    if ent < 4.5:
+                        continue
                 findings.append({
                     "file": filename,
                     "line": line_num,
@@ -228,8 +262,86 @@ def check_licenses(root_dir: str = ".") -> Tuple[int, List[Dict[str, str]]]:
     return 0, manifests
 
 
+def extract_lockfile_dependencies(root_dir: str = ".") -> List[Dict[str, str]]:
+    """Extracts external dependencies from lockfiles (pnpm, npm, cargo, go) for SBOM (DEFECT-17)."""
+    deps: List[Dict[str, str]] = []
+    seen: Set[Tuple[str, str]] = set()
+
+    # Cargo.lock
+    cargo_lock = os.path.join(root_dir, "Cargo.lock")
+    if os.path.isfile(cargo_lock):
+        try:
+            with open(cargo_lock, "r", encoding="utf-8") as f:
+                content = f.read()
+            for block in content.split("[[package]]"):
+                name_m = re.search(r'name\s*=\s*"([^"]+)"', block)
+                ver_m = re.search(r'version\s*=\s*"([^"]+)"', block)
+                if name_m and ver_m:
+                    n, v = name_m.group(1), ver_m.group(1)
+                    if (n, v) not in seen:
+                        seen.add((n, v))
+                        deps.append({"name": n, "version": v, "ecosystem": "cargo", "source": "Cargo.lock"})
+        except Exception:
+            pass
+
+    # package-lock.json
+    pkg_lock = os.path.join(root_dir, "package-lock.json")
+    if os.path.isfile(pkg_lock):
+        try:
+            with open(pkg_lock, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            packages = data.get("packages", {})
+            for pkg_path, pkg_info in packages.items():
+                if not pkg_path:
+                    continue
+                name = pkg_info.get("name") or pkg_path.split("node_modules/")[-1]
+                version = pkg_info.get("version", "unknown")
+                if (name, version) not in seen:
+                    seen.add((name, version))
+                    deps.append({"name": name, "version": version, "ecosystem": "npm", "source": "package-lock.json"})
+        except Exception:
+            pass
+
+    # pnpm-lock.yaml
+    pnpm_lock = os.path.join(root_dir, "pnpm-lock.yaml")
+    if os.path.isfile(pnpm_lock):
+        try:
+            with open(pnpm_lock, "r", encoding="utf-8") as f:
+                for line in f:
+                    m = re.match(r"^  /?(['\"]?)([@a-zA-Z0-9_\-\./]+)@([0-9a-zA-Z\.\-_]+)\1:", line)
+                    if m:
+                        name, version = m.group(2), m.group(3)
+                        if (name, version) not in seen:
+                            seen.add((name, version))
+                            deps.append({"name": name, "version": version, "ecosystem": "pnpm", "source": "pnpm-lock.yaml"})
+        except Exception:
+            pass
+
+    # go.sum
+    go_sum = os.path.join(root_dir, "go.sum")
+    if os.path.isfile(go_sum):
+        try:
+            with open(go_sum, "r", encoding="utf-8") as f:
+                for line in f:
+                    parts = line.strip().split()
+                    if len(parts) >= 2:
+                        name = parts[0]
+                        version = parts[1].split("/")[0]
+                        if (name, version) not in seen:
+                            seen.add((name, version))
+                            deps.append({"name": name, "version": version, "ecosystem": "go", "source": "go.sum"})
+        except Exception:
+            pass
+
+    return deps
+
+
 def cmd_license(args: argparse.Namespace) -> int:
-    root = getattr(args, "root", ".") or "."
+    pkg_json = getattr(args, "package_json", None)
+    if pkg_json:
+        root = os.path.dirname(pkg_json) if os.path.isfile(pkg_json) else pkg_json
+    else:
+        root = getattr(args, "root", ".") or "."
     _, manifests = check_licenses(root)
 
     print(f"=== EP-OS License & Supply Chain Scanner ({len(manifests)} manifests inspected) ===")
@@ -245,9 +357,22 @@ def cmd_license(args: argparse.Namespace) -> int:
     if getattr(args, "sbom", False):
         os.makedirs(".ep", exist_ok=True)
         sbom_path = ".ep/sbom.json"
+        external_deps = extract_lockfile_dependencies(root)
+        sbom_data = {
+            "bomFormat": "CycloneDX",
+            "specVersion": "1.4",
+            "metadata": {
+                "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                "tools": ["EP-OS Supply Chain Scanner"]
+            },
+            "components": manifests,
+            "dependencies": external_deps,
+            "total_internal_components": len(manifests),
+            "total_external_dependencies": len(external_deps),
+        }
         with open(sbom_path, "w", encoding="utf-8") as fh:
-            json.dump({"components": manifests}, fh, indent=2)
-        print(f"[OK] Exported SBOM metadata to '{sbom_path}'.")
+            json.dump(sbom_data, fh, indent=2)
+        print(f"[OK] Exported SBOM metadata ({len(manifests)} internal, {len(external_deps)} external dependencies) to '{sbom_path}'.")
 
     if violations:
         print(f"\n[FAIL] Copyleft license contagion detected in {len(violations)} package(s)!", file=sys.stderr)
