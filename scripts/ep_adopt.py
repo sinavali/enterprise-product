@@ -79,15 +79,19 @@ def infer_scope(project_path: str) -> str:
 def scaffold_agent_manifest(project_path: str, stack_info: Dict[str, str], profile: str = "B") -> str:
     project_name = os.path.basename(project_path)
     scope = infer_scope(project_path)
+    stack_lang = stack_info.get("lang", "generic")
+    audit_cmd = stack_info.get("audit") or f"python3 scripts/ep.py audit --scope {project_path}"
     content = f"""---
 project_name: "{project_name}"
-scope: "{scope}"
+profile: "{profile.upper()}"
 architectural_profile: "{profile.upper()}"
-adrs: []
+stack: "{stack_lang}"
+scope: "{scope}"
+owner: "engineering"
 tier_overrides: []
 ---
 
-# AGENT Manifest: {project_name}
+# Project Agent Manifest: {project_name}
 
 ## 1. Scope & Business Intent
 Subproject '{project_name}' adopted into EP-OS governance.
@@ -103,7 +107,7 @@ Enforcing Profile {profile.upper()}:
 - **Lint**: `{stack_info.get('lint', 'echo No lint')}`
 - **Test**: `{stack_info.get('test', 'echo No test')}`
 - **Build**: `{stack_info.get('build', 'echo No build')}`
-- **Audit**: `python3 scripts/ep.py audit --scope {project_path}`
+- **Audit**: `{audit_cmd}`
 
 ## 4. Test & Verification
 - Unit & integration verification adhering to 10-dimension audit criteria.

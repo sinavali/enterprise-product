@@ -1,0 +1,48 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "example-python-service",
+  "projectType": "application",
+  "sourceRoot": "services/example-python-service/src",
+  "tags": [
+    "profile:a",
+    "scope:backend",
+    "lang:python"
+  ],
+  "targets": {
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "ruff check . && mypy src",
+        "cwd": "services/example-python-service"
+      },
+      "inputs": ["default"]
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pytest -v --cov=src --cov-report=term-missing",
+        "cwd": "services/example-python-service"
+      },
+      "inputs": ["default", "^production"],
+      "outputs": ["{projectRoot}/.coverage"]
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "python -m build",
+        "cwd": "services/example-python-service"
+      },
+      "dependsOn": ["^build"],
+      "inputs": ["production", "^production"],
+      "outputs": ["{projectRoot}/dist"]
+    },
+    "audit": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pip-audit",
+        "cwd": "services/example-python-service"
+      },
+      "inputs": ["default"]
+    }
+  }
+}

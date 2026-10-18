@@ -38,6 +38,11 @@ TIER_1_BANNED_OVERRIDES = {
     "expand-contract-migration",
     "anti-mvp",
     "zero-stub",
+    "human-only-prod",
+    "human-only-prod-merge",
+    "prod-merge",
+    "prod-merge-restriction",
+    "no-agent-prod-merge",
 }
 
 REQUIRED_SECTIONS = [
@@ -175,6 +180,8 @@ def verify_agent_manifest(
         if not frontmatter:
             errors.append("Missing required YAML frontmatter.")
         else:
+            if "profile" not in frontmatter and "architectural_profile" in frontmatter:
+                frontmatter["profile"] = frontmatter["architectural_profile"]
             for req in ["project_name", "profile", "stack", "scope"]:
                 if req not in frontmatter or not frontmatter[req]:
                     errors.append(f"Missing required frontmatter property: '{req}'")

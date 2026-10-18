@@ -1,0 +1,48 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "example-node-service",
+  "projectType": "application",
+  "sourceRoot": "services/example-node-service/src",
+  "tags": [
+    "profile:a",
+    "scope:backend",
+    "lang:typescript"
+  ],
+  "targets": {
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm eslint . --max-warnings 0 && pnpm tsc --noEmit",
+        "cwd": "services/example-node-service"
+      },
+      "inputs": ["default"]
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm vitest run --coverage",
+        "cwd": "services/example-node-service"
+      },
+      "inputs": ["default", "^production"],
+      "outputs": ["{projectRoot}/coverage"]
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm tsup src/index.ts --format cjs,esm --dts",
+        "cwd": "services/example-node-service"
+      },
+      "dependsOn": ["^build"],
+      "inputs": ["production", "^production"],
+      "outputs": ["{projectRoot}/dist"]
+    },
+    "audit": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm audit --audit-level high",
+        "cwd": "services/example-node-service"
+      },
+      "inputs": ["default"]
+    }
+  }
+}

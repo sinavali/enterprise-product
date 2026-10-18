@@ -34,6 +34,10 @@ def cmd_init(args: argparse.Namespace) -> int:
         template_file = "go-service-project.json"
     elif profile == "A" and lang in ("rust", "rs"):
         template_file = "rust-service-project.json"
+    elif profile == "A" and lang in ("ts", "typescript", "node", "nodejs"):
+        template_file = "node-service-project.json"
+    elif profile == "A" and lang in ("python", "py"):
+        template_file = "python-service-project.json"
     elif profile == "B":
         template_file = "next-web-project.json"
     elif profile == "C":

@@ -78,6 +78,9 @@ if [ ! -f "$EP_BIN" ]; then
     fi
 fi
 
+echo "=== [EP-OS HOOK] Running Pre-Push Verification Suite ==="
+"$PYTHON_EXEC" "$EP_BIN" verify
+
 echo "=== [EP-OS HOOK] Running Pre-Push Multi-Tier VCS Sync-Check ==="
 "$PYTHON_EXEC" "$EP_BIN" vcs sync-check
 """

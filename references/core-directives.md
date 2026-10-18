@@ -80,12 +80,12 @@ These rules cannot be relaxed, bypassed, or overridden by any project, developer
 1. **Single Monorepo via Deterministic DAG**: Root orchestration manages `lint`, `test`, `build`, and `audit` across all packages.
 2. **Pure Domain Logic**: Domain entities, value objects, and domain services must have zero imports from frameworks, ORMs, transport layers, or external third-party SDKs.
 3. **No Engine-Substitution Emulation**: Integration tests must execute against the exact database engine and major version utilized in production via real ephemeral containers (Podman/Testcontainers). Replacing PostgreSQL/MySQL with in-memory SQLite is strictly forbidden.
-4. **Mandatory Change Surface**: No non-trivial implementation without an approved and validated Change Surface.
-5. **UTC Storage Convention**: All database timestamps, queue messages, events, and API payloads must be persisted and exchanged in UTC (ISO 8601 with `Z` or UTC timestamp).
-6. **14-Day NC Merge Block**: Any open `NEED_CLARIFICATION` item older than 14 calendar days mechanically halts automated merges and triggers review escalation.
-7. **2-Pass PR Self-Audit Protocol**: The agent must audit its own diff across both passes and achieve 0 blocking findings before merging.
-8. **Directory Nesting Depth Ceiling**: Directory hierarchy must not exceed 6 levels from project root.
-9. **Zero-Downtime Expand/Contract Migrations**: Destructive database alterations that break rolling blue/green deployments are strictly forbidden.
+4. **UTC Storage Convention**: All database timestamps, queue messages, events, and API payloads must be persisted and exchanged in UTC (ISO 8601 with `Z` or UTC timestamp).
+5. **Mandatory Change Surface**: No non-trivial implementation without an approved and validated Change Surface.
+6. **Anti-Sprawl Hygiene (Rule 2.6)**: Files must not exceed 800 lines (soft target $\le 400$ lines), directory nesting must not exceed 6 levels, and zero generic dumping grounds (`utils/`, `helpers/`, `common/`) are allowed.
+7. **Zero-Downtime Expand/Contract Migrations**: Destructive database alterations that break rolling blue/green deployments are strictly forbidden.
+8. **14-Day NC Merge Block**: Any open `NEED_CLARIFICATION` item older than 14 calendar days mechanically halts automated merges and triggers review escalation.
+9. **Strict Human-Only Production Gate**: AI agents are strictly forbidden from merging into `prod`. Agents may only prepare release candidate PRs (`ep pr create-prod`) with auto-merge disabled.
 10. **Anti-MVP & Zero-Stub Mandate**: AI agents and developers are **strictly forbidden from proposing or implementing 'MVP', 'Proof-of-Concept', 'mock-first', or 'phased hardening' shortcuts**. Every deliverable—regardless of how narrow or bounded its scope—must be the finalized, fully resilient, production-ready implementation with complete error handling, timeouts, retries, and ephemeral container verification from the outset. Deferring production hardening to future steps or versions is a blocking violation.
 
 ### Tier 2: Strong Defaults (Requires ADR & `AGENT.md` Override)

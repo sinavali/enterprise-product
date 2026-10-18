@@ -40,7 +40,7 @@ The **supreme enterprise gatekeeper and engineering operating system (EP-OS)** f
 
 ## 2. Operational Modes
 
-Agents operate under one of seven distinct modes. When invoked, determine or declare the active mode:
+Agents operate under one of ten distinct operational modes. When invoked, determine or declare the active mode:
 
 | Mode | Purpose | Modifies Files | Required Pre-condition |
 |---|---|---|---|

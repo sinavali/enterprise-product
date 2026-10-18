@@ -299,6 +299,26 @@ def run_audit(target_dir: str, max_file_lines: int = 800, max_dir_depth: int = 6
                         })
                         break
 
+                # Check for operational runbook requirement on services/apps
+                if dir_parts and dir_parts[0] in {"services", "apps"} and len(dir_parts) == 2:
+                    svc_name = dir_parts[1]
+                    if os.path.exists(os.path.join(root, "project.json")):
+                        has_runbook = (
+                            os.path.exists(os.path.join(root, "RUNBOOK.md"))
+                            or os.path.exists(os.path.join(target_dir, "docs", "runbooks", f"{svc_name}.md"))
+                            or os.path.exists(os.path.join(target_dir, "docs", "runbooks", f"{svc_name}.runbook.md"))
+                        )
+                        if not has_runbook:
+                            all_findings.append({
+                                "dim": 9,
+                                "id": "RULE-9.5-OPERATIONAL-RUNBOOK",
+                                "severity": "suggestion",
+                                "description": f"Service '{svc_name}' lacks an operational runbook. Create one using 'templates/RUNBOOK.template.md'.",
+                                "file": os.path.join(rel_dir, "project.json").replace("\\", "/"),
+                                "line": 1,
+                                "snippet": f"Service: {svc_name}",
+                            })
+
             for f in files:
                 files_to_scan.append(os.path.join(root, f))
                 
