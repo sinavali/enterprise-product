@@ -503,7 +503,7 @@ def main():
 
     # vcs
     p_vcs = subparsers.add_parser("vcs", help="Multi-Tier VCS operations and topology validation")
-    p_vcs.add_argument("action", choices=["sync-check"], help="VCS action")
+    p_vcs.add_argument("action", choices=["sync-check", "init-branches"], help="VCS action")
     p_vcs.add_argument("--base", default="main", help="Base trunk branch")
 
     # pr

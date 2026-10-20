@@ -178,14 +178,13 @@ def verify_agent_manifest(
         return False, [f"Could not read file: {e}"]
 
     frontmatter, body = parse_agent_yaml(content)
-    # A manifest is a subproject manifest if it declares project_name, coexists with project.json,
-    # or resides within subproject trees (apps, services, libs, packages).
+    # A manifest is a root manifest if it resides at root_dir, is outside subproject trees (apps, services, libs, packages),
+    # and does not declare subproject-specific project_name.
     norm_path = file_path.replace("\\", "/")
     has_project_name = bool(frontmatter.get("project_name")) if frontmatter else False
-    has_sibling_project_json = os.path.exists(os.path.join(os.path.dirname(file_path), "project.json"))
     in_subproject_dir = any(d in norm_path.split("/") for d in ["apps", "services", "libs", "packages"])
-    is_subproject = has_project_name or has_sibling_project_json or in_subproject_dir
-    is_root = not is_subproject and (os.path.abspath(file_path) == os.path.abspath(os.path.join(root_dir, "AGENT.md")))
+    is_root_file = (os.path.abspath(file_path) == os.path.abspath(os.path.join(root_dir, "AGENT.md")))
+    is_root = is_root_file and not in_subproject_dir and not has_project_name
 
     # For subproject AGENT.md, frontmatter is strictly required with project properties
     if not is_root:
