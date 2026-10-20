@@ -156,6 +156,22 @@ def cmd_vcs(args: argparse.Namespace) -> int:
             return 1
         print("[OK] Multi-Tier VCS Topology in sync. Zero rogue commits detected.")
         return 0
+    elif action in ("init-branches", "init-topology"):
+        base = args.base or "main"
+        branches = ["test", "stage", "prod"]
+        print(f"=== Initializing Multi-Tier VCS Branches from '{base}' ===")
+        for b in branches:
+            res_check = subprocess.run(["git", "rev-parse", "--verify", b], capture_output=True, text=True, check=False)
+            if res_check.returncode == 0:
+                print(f"  ℹ️ Branch '{b}' already exists.")
+            else:
+                res_create = subprocess.run(["git", "branch", b, base], capture_output=True, text=True, check=False)
+                if res_create.returncode == 0:
+                    print(f"  ✅ Created branch '{b}' at '{base}'.")
+                else:
+                    print(f"  ❌ Failed to create '{b}': {res_create.stderr.strip()}", file=sys.stderr)
+        print("[OK] Multi-Tier VCS topology ready.")
+        return 0
     return 0
 
 
