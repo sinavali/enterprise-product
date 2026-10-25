@@ -11,7 +11,7 @@ import json
 import os
 import re
 import sys
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 
 EXCLUDED_DIRS = {
@@ -77,7 +77,7 @@ def parse_nc_file(file_path: str) -> Optional[Dict]:
         return None
 
     yaml_text = parts[1].strip()
-    data = {"file_path": file_path, "affected_projects": []}
+    data: Dict[str, Any] = {"file_path": file_path, "affected_projects": []}
     current_list_key = None
 
     for line in yaml_text.splitlines():
@@ -92,7 +92,7 @@ def parse_nc_file(file_path: str) -> Optional[Dict]:
                 m = re.match(r"^([\"'].*?[\"'])\s*(?:#.*)?$", raw_item)
                 raw_item = m.group(1) if m else raw_item.split("#", 1)[0].strip()
             item_val = raw_item.strip("\"'")
-            if item_val:
+            if item_val and isinstance(data.get(current_list_key), list):
                 data[current_list_key].append(item_val)
             continue
 
@@ -127,8 +127,8 @@ def parse_nc_file(file_path: str) -> Optional[Dict]:
     return data
 
 
-def scan_nc_items(scan_dir: str) -> List[Dict]:
-    items = []
+def scan_nc_items(scan_dir: str) -> List[Dict[str, Any]]:
+    items: List[Dict[str, Any]] = []
     if not os.path.exists(scan_dir):
         return items
 

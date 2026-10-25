@@ -10,7 +10,7 @@ import json
 import os
 import re
 import sys
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 
 ALLOWED_PROFILES = {"A", "B", "C", "D"}
@@ -91,7 +91,7 @@ def parse_agent_yaml(content: str) -> Tuple[Dict, str]:
     yaml_text = parts[1].strip()
     body = parts[2].strip()
 
-    data = {"tier_overrides": []}
+    data: Dict[str, Any] = {"tier_overrides": []}
     current_list = None
     current_dict_item = None
     current_parent_key = None
@@ -125,9 +125,13 @@ def parse_agent_yaml(content: str) -> Tuple[Dict, str]:
             if current_dict_item is not None:
                 current_dict_item[k] = v
             elif current_parent_key is not None:
-                if not isinstance(data.get(current_parent_key), dict):
-                    data[current_parent_key] = {}
-                data[current_parent_key][k] = v
+                parent_val = data.get(current_parent_key)
+                if not isinstance(parent_val, dict):
+                    parent_dict: Dict[str, Any] = {}
+                    data[current_parent_key] = parent_dict
+                else:
+                    parent_dict = parent_val
+                parent_dict[k] = v
             continue
 
         # Top-level key

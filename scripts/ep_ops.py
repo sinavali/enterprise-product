@@ -16,15 +16,31 @@ import re
 import shutil
 import subprocess
 import sys
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple
 
-try:
+if TYPE_CHECKING:
     from scripts.ep_runner import discover_projects
-except ImportError:
+else:
     try:
-        from ep_runner import discover_projects
+        from scripts.ep_runner import discover_projects
     except ImportError:
-        discover_projects = None
+        try:
+            from ep_runner import discover_projects
+        except ImportError:
+            discover_projects = None
+
+
+def atomic_write(filepath: str, content: str, mode: str = "w", encoding: str = "utf-8") -> None:
+    """
+    POSIX-compliant atomic write via temporary file replacement.
+    Ensures that interrupted writes never leave truncated or corrupt files.
+    """
+    dir_name = os.path.dirname(os.path.abspath(filepath))
+    os.makedirs(dir_name, exist_ok=True)
+    tmp_file = f"{filepath}.tmp.{os.getpid()}"
+    with open(tmp_file, mode, encoding=encoding) as f:
+        f.write(content)
+    os.replace(tmp_file, filepath)
 
 
 # ==============================================================================
@@ -118,8 +134,8 @@ def parse_slo_yaml(content: str) -> Dict[str, Any]:
                     if in_sli:
                         current_slo["sli"][k] = v
                     elif in_error_budget:
-                        if in_alert_triggers and re.match(r"^\s*-\s*burn_rate:\s*(.*)$", line):
-                            burn_m = re.match(r"^\s*-\s*burn_rate:\s*(.*)$", line)
+                        burn_m = re.match(r"^\s*-\s*burn_rate:\s*(.*)$", line)
+                        if in_alert_triggers and burn_m:
                             raw_burn = clean_yaml_val(burn_m.group(1)).split()[0]
                             try:
                                 burn_val = float(raw_burn)
