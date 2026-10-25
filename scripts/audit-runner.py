@@ -194,6 +194,9 @@ EXCLUDED_DIRS = {
     "fixtures",
     "templates",
     "__pycache__",
+    "obj",
+    "bin",
+    "target",
 }
 
 CODE_EXTENSIONS = {
