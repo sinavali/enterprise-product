@@ -41,8 +41,14 @@ Resolve 5 blocking defects, 3 suggestions, and 2 nits identified during the full
 - `scripts/ep_session.py`: Add timeout to git branch subprocess call.
 - `scripts/ep_vcs.py`: Add timeouts to subprocess calls, support `--push` / `--no-push` on `init-branches`.
 - `scripts/ep_ast.py`: Filter out build output directories (`dist-next`, `.next`).
-- `SKILL.md`: Document `ep doctor` and `PRODUCT_SKILL.md` workflows.
+- `SKILL.md`: Document `ep doctor` and `PRODUCT_SKILL.md` workflows, add trigger phrasing, align 14 modes, complete CLI reference.
+- `AGENT.md`: Add doctor and skill modes, align 14 operational modes.
+- `CLAUDE.md`: Universal projection of AGENT.md.
+- `.cursorrules`: Universal projection of AGENT.md.
+- `.windsurfrules`: Universal projection of AGENT.md.
 - `references/core-directives.md`: Document self-healing and prerequisite diagnostic standards.
+- `references/deep-observability.md`: Fix LaTeX math percentile rendering.
+- `references/documentation-system.md`: Add enterprise template and scaffolding asset catalog.
 - `tests/test_check_nc_items.py`: Fix `test_inline_bracket_list_affected_projects` with explicit `--as-of-date`.
 - `tests/test_container_engine_resolver.py`: Add `sys.path.insert(0, str(REPO_ROOT))`.
 
