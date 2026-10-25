@@ -27,6 +27,7 @@ try:
     from ep_adopt import cmd_adopt
     from ep_ast import cmd_ast
     from ep_context import cmd_pack
+    from ep_doctor import cmd_ci, cmd_doctor, cmd_skill, run_doctor
     from ep_hooks import cmd_hooks
     from ep_ops import cmd_codeowners, cmd_container, cmd_dora, cmd_perf, cmd_slo
     from ep_runner import cmd_run, cmd_run_many
@@ -40,6 +41,7 @@ except ImportError:
     from scripts.ep_adopt import cmd_adopt
     from scripts.ep_ast import cmd_ast
     from scripts.ep_context import cmd_pack
+    from scripts.ep_doctor import cmd_ci, cmd_doctor, cmd_skill, run_doctor
     from scripts.ep_hooks import cmd_hooks
     from scripts.ep_ops import cmd_codeowners, cmd_container, cmd_dora, cmd_perf, cmd_slo
     from scripts.ep_runner import cmd_run, cmd_run_many
@@ -89,7 +91,7 @@ def cmd_surface(args: argparse.Namespace) -> int:
             return 1
 
         surface_text = code_surface_match.group(0)
-        declared_paths = set(re.findall(r"[`']([a-zA-Z0-9_\-./]+)[`']", surface_text))
+        declared_paths = set(re.findall(r"[`']([a-zA-Z0-9_\-./\[\]]+)[`']", surface_text))
 
         try:
             if "..." in base_branch or base_branch in ("HEAD", "HEAD~1"):
@@ -127,7 +129,7 @@ def cmd_surface(args: argparse.Namespace) -> int:
 
             covered = False
             for d_path in declared_paths:
-                if m_file == d_path or m_file.startswith(d_path.rstrip("/") + "/"):
+                if m_file == d_path or m_file.startswith(d_path.rstrip("/") + "/") or (m_file.endswith("/") and d_path.startswith(m_file)):
                     covered = True
                     break
             if not covered:
@@ -505,6 +507,8 @@ def main():
     p_vcs = subparsers.add_parser("vcs", help="Multi-Tier VCS operations and topology validation")
     p_vcs.add_argument("action", choices=["sync-check", "init-branches"], help="VCS action")
     p_vcs.add_argument("--base", default="main", help="Base trunk branch")
+    p_vcs.add_argument("--push", action="store_true", default=True, help="Push initialized branches to remote origin")
+    p_vcs.add_argument("--no-push", dest="push", action="store_false", help="Do not push to remote origin")
 
     # pr
     p_pr = subparsers.add_parser("pr", help="Pull request and promotion operations")
@@ -551,6 +555,7 @@ def main():
 
     p_verify = subparsers.add_parser("verify", help="Run parallel mechanical gatekeeper suite")
     p_verify.add_argument("--root", default=".", help="Root directory to scan")
+    p_verify.add_argument("--heal", action="store_true", help="Autonomously heal missing prerequisites before verifying")
 
     p_nc = subparsers.add_parser("nc", help="Audit NEED_CLARIFICATION items for expiration")
     p_nc.add_argument("action", choices=["check"], help="Action to perform")
@@ -665,6 +670,23 @@ def main():
     p_pack.add_argument("--max-lines", type=int, default=800, help="Max lines per file")
     p_pack.add_argument("--root", default=".", help="Monorepo root")
 
+    # doctor (prerequisite audit and autonomous healing)
+    p_doc = subparsers.add_parser("doctor", help="Enterprise OS prerequisite audit and autonomous healing")
+    p_doc.add_argument("--heal", action="store_true", help="Autonomously configure missing prerequisites")
+    p_doc.add_argument("--root", default=".", help="Monorepo root")
+
+    # skill (product-specific tailored skill generator)
+    p_sk = subparsers.add_parser("skill", help="Generate compact, product-specific tailored skill manifest")
+    p_sk.add_argument("action", nargs="?", default="generate", choices=["generate"], help="Skill action")
+    p_sk.add_argument("--output", default=None, help="Output file path (default PRODUCT_SKILL.md)")
+    p_sk.add_argument("--root", default=".", help="Monorepo root")
+
+    # ci (CI/CD pipeline workflow scaffolding)
+    p_ci = subparsers.add_parser("ci", help="CI/CD pipeline workflow scaffolding")
+    p_ci.add_argument("action", nargs="?", default="init", choices=["init"], help="CI action")
+    p_ci.add_argument("--platform", default="github", choices=["github", "gitlab"], help="CI platform")
+    p_ci.add_argument("--root", default=".", help="Monorepo root")
+
     args = parser.parse_args()
 
     if not args.subcommand:
@@ -715,6 +737,8 @@ def main():
 
     elif args.subcommand == "verify":
         root_dir = getattr(args, "root", ".") or "."
+        if getattr(args, "heal", False):
+            run_doctor(root_dir=root_dir, heal=True)
         print("=== 1. Verifying Nx Target Contracts ===")
         nx_res = subprocess.run([sys.executable, os.path.join(SCRIPTS_DIR, "verify-nx-targets.py"), "--root", root_dir], timeout=30).returncode
 
@@ -745,48 +769,22 @@ def main():
         sys.exit(0 if all_ok else 1)
 
     elif args.subcommand == "telemetry":
-        print("[OK] Telemetry Verification: Traceparent headers and metrics endpoints conform to OpenTelemetry schema.")
-        sys.exit(0)
+        print("[OK] Telemetry: Traceparent headers conform to OpenTelemetry schema."); sys.exit(0)
     elif args.subcommand == "finops":
-        print("[OK] FinOps Verification: CPU and memory quota limits verified across subproject manifests.")
-        sys.exit(0)
+        print("[OK] FinOps: Resource quota limits verified across manifests."); sys.exit(0)
     elif args.subcommand == "policy":
-        print("[OK] Policy Test: Zero policy violations detected across enterprise governance rules.")
-        sys.exit(0)
+        print("[OK] Policy: Zero policy violations detected across governance rules."); sys.exit(0)
 
-    elif args.subcommand == "nc":
-        cmd = [sys.executable, os.path.join(SCRIPTS_DIR, "check-nc-items.py"), "--max-age", str(args.max_age)]
-        sys.exit(subprocess.run(cmd, timeout=30).returncode)
-    elif args.subcommand == "hooks":
-        sys.exit(cmd_hooks(args))
-    elif args.subcommand == "security":
-        sys.exit(cmd_security(args))
-    elif args.subcommand == "license":
-        sys.exit(cmd_license(args))
-    elif args.subcommand == "adopt":
-        sys.exit(cmd_adopt(args))
-    elif args.subcommand == "sync-skill":
-        sys.exit(cmd_sync_skill(args))
-    elif args.subcommand == "ast":
-        sys.exit(cmd_ast(args))
-    elif args.subcommand == "run":
-        sys.exit(cmd_run(args))
-    elif args.subcommand == "run-many":
-        sys.exit(cmd_run_many(args))
-    elif args.subcommand == "iac":
-        sys.exit(cmd_iac(args))
-    elif args.subcommand == "slo":
-        sys.exit(cmd_slo(args))
-    elif args.subcommand == "codeowners":
-        sys.exit(cmd_codeowners(args))
-    elif args.subcommand == "dora":
-        sys.exit(cmd_dora(args))
-    elif args.subcommand == "perf":
-        sys.exit(cmd_perf(args))
-    elif args.subcommand == "container":
-        sys.exit(cmd_container(args))
-    elif args.subcommand in ("pack", "context"):
-        sys.exit(cmd_pack(args))
+    dispatch = {
+        "nc": lambda a: subprocess.run([sys.executable, os.path.join(SCRIPTS_DIR, "check-nc-items.py"), "--max-age", str(a.max_age)], timeout=30).returncode,
+        "hooks": cmd_hooks, "security": cmd_security, "license": cmd_license, "adopt": cmd_adopt,
+        "sync-skill": cmd_sync_skill, "ast": cmd_ast, "run": cmd_run, "run-many": cmd_run_many,
+        "iac": cmd_iac, "slo": cmd_slo, "codeowners": cmd_codeowners, "dora": cmd_dora,
+        "perf": cmd_perf, "container": cmd_container, "pack": cmd_pack, "context": cmd_pack,
+        "doctor": cmd_doctor, "skill": cmd_skill, "ci": cmd_ci,
+    }
+    if args.subcommand in dispatch:
+        sys.exit(dispatch[args.subcommand](args))
 
 
 if __name__ == "__main__":

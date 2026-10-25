@@ -152,6 +152,10 @@ def scan_structural_rules(scope: str = ".") -> List[Dict[str, Any]]:
             matches = run_ast_query(pattern, scope=scope, lang=lang)
             for m in matches:
                 file_path = m.get("file", "")
+                norm_p = file_path.replace("\\", "/")
+                parts = set(norm_p.split("/"))
+                if parts.intersection({"node_modules", "dist", "dist-next", ".next", "build", ".nx", "coverage", ".git", ".cache"}):
+                    continue
                 if not rule["path_filter"](file_path):
                     continue
 

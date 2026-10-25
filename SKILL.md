@@ -35,6 +35,12 @@ The **supreme enterprise gatekeeper and engineering operating system (EP-OS)** f
 9. **Complete Documentation & NC Protocol**:
    - Ambiguities are recorded as formal `NEED_CLARIFICATION` (NC) items. Open NC items older than 14 days mechanically block merges.
    - Architecture Decision Records (ADRs) for all architectural modifications.
+10. **Autonomous Self-Healing & Free-Tier/Sovereign Governance**:
+   - **Operating System Diagnostic & Healing (`ep doctor [--heal]`)**: Audits and heals 7 core prerequisites: Git hooks, VCS branches (`main`, `test`, `stage`, `prod`), CODEOWNERS, Nx targets, `AGENT.md`, container engine, and tailored `PRODUCT_SKILL.md`.
+   - **Free-Tier & Sovereign Environments**: In environments without paid cloud branch protections (e.g. GitHub Free private repos, air-gapped git), promotion branches are strictly guarded client-side via zero-dependency native hooks (`.git/hooks/pre-commit`, `pre-push`, `commit-msg`).
+   - **Tailored Product Skill (`ep skill generate`)**: Generates a lean `< 150` line `PRODUCT_SKILL.md` to prevent agent context bloat while enforcing localized profile invariants and the single-turn ingestion mandate.
+11. **Interactive Initiation & Adoption Questionnaire**:
+   - During `init` or `adopt`, agents must prompt the user with interactive setup questions regarding monorepo profile mappings (A/B/C/D), hosting environment (Free/Sovereign vs Enterprise Cloud), and trigger `ep doctor --heal`.
 
 ---
 
@@ -54,15 +60,18 @@ Agents operate under one of ten distinct operational modes. When invoked, determ
 | `session` | Manages multi-session workspace checkpoints, state pause/resume, and retention. | Yes (`.ep/sessions/`) | Session start, pause, resume, or checkpoint. |
 | `sync` | Validates multi-tier branch synchronization across main, test, stage, prod. | No | Pre-push, pre-merge, or promotion. |
 | `release` | Orchestrates Hybrid Dual-Tier SemVer bumps, signed git tags, and release notes. | Yes (`docs/releases/`) | Production merge or milestone completion. |
+| `doctor` | Operating system prerequisite diagnostic & autonomous self-healing. | Yes (If `--heal`) | Preflight, adoption, or periodic check. |
+| `skill` | Generates compact product-specific tailored skill manifest. | Yes (`PRODUCT_SKILL.md`) | Adoption, profile changes, context hygiene. |
 
 ---
 
 ## 3. Mode Execution Workflows
 
-### Preflight Gate (Mandatory on First Turn)
-Run `python3 scripts/ep.py preflight`.
+### Preflight & Doctor Gate (Mandatory on First Turn)
+Run `python3 scripts/ep.py preflight && python3 scripts/ep.py doctor`.
 - Verifies shell, git, python, and workspace write access.
-- If missing permissions: prompts user with repeatable instructions.
+- Validates 7 operating system prerequisites (Hooks, VCS branches, CODEOWNERS, Nx contracts, root AGENT.md, container engine, tailored PRODUCT_SKILL.md).
+- If prerequisites are missing: run `python3 scripts/ep.py doctor --heal` to autonomously configure them.
 - If access is refused: halts and refuses engagement on the Product.
 
 ### Mode: `plan`
