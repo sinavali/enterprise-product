@@ -15,7 +15,7 @@ import os
 import re
 import subprocess
 import sys
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple
 
 
 DIMENSIONS = [
@@ -209,8 +209,8 @@ BINARY_EXTENSIONS = {
 }
 
 
-def scan_file_for_violations(file_path: str, max_file_lines: int = 800) -> List[Dict]:
-    findings = []
+def scan_file_for_violations(file_path: str, max_file_lines: int = 800) -> List[Dict[str, Any]]:
+    findings: List[Dict[str, Any]] = []
     norm_path = file_path.replace("\\", "/")
     full_norm_path = os.path.abspath(file_path).replace("\\", "/")
     _, ext = os.path.splitext(norm_path.lower())
@@ -238,10 +238,12 @@ def scan_file_for_violations(file_path: str, max_file_lines: int = 800) -> List[
         })
 
     for rule in HEURISTIC_RULES:
-        if not (re.search(rule["path_regex"], norm_path, re.IGNORECASE) or re.search(rule["path_regex"], full_norm_path, re.IGNORECASE)):
+        path_pat = str(rule["path_regex"])
+        if not (re.search(path_pat, norm_path, re.IGNORECASE) or re.search(path_pat, full_norm_path, re.IGNORECASE)):
             continue
 
-        compiled_regex = re.compile(rule["content_regex"], re.IGNORECASE)
+        content_pat = str(rule["content_regex"])
+        compiled_regex = re.compile(content_pat, re.IGNORECASE)
         for idx, line in enumerate(lines, start=1):
             if rule["id"] == "RULE-5.1-HARDCODED-SECRET" and re.search(
                 r"(test|mock|dummy|fake|example|placeholder)", line, re.IGNORECASE
@@ -345,33 +347,38 @@ def run_audit(target_dir: str, max_file_lines: int = 800, max_dir_depth: int = 6
         all_findings.extend(scan_file_for_violations(f, max_file_lines=max_file_lines))
 
     # Integrate ast-grep structural scanning when available
-    try:
+    if TYPE_CHECKING:
         from scripts.ep_ast import is_ast_grep_available, scan_structural_rules
-    except ImportError:
+    else:
         try:
-            from ep_ast import is_ast_grep_available, scan_structural_rules
+            from scripts.ep_ast import is_ast_grep_available, scan_structural_rules
         except ImportError:
-            is_ast_grep_available = lambda: False
-            scan_structural_rules = lambda scope: []
+            try:
+                from ep_ast import is_ast_grep_available, scan_structural_rules
+            except ImportError:
+                def is_ast_grep_available() -> bool:
+                    return False
+                def scan_structural_rules(scope: str = ".") -> List[Dict[str, Any]]:
+                    return []
 
     if is_ast_grep_available() and os.path.exists(target_dir):
         ast_findings = scan_structural_rules(target_dir)
         seen_violations = set()
-        for f in all_findings:
-            parts = f.get("id", "").split("-")
-            rule_num = parts[1] if len(parts) > 1 else f.get("id", "")
-            seen_violations.add((f.get("file", ""), f.get("line", 0), rule_num))
+        for finding_item in all_findings:
+            parts = str(finding_item.get("id", "")).split("-")
+            rule_num = parts[1] if len(parts) > 1 else str(finding_item.get("id", ""))
+            seen_violations.add((str(finding_item.get("file", "")), int(str(finding_item.get("line", 0))), rule_num))
 
         for af in ast_findings:
-            parts = af.get("id", "").split("-")
-            rule_num = parts[1] if len(parts) > 1 else af.get("id", "")
-            viol_key = (af.get("file", ""), af.get("line", 0), rule_num)
+            parts = str(af.get("id", "")).split("-")
+            rule_num = parts[1] if len(parts) > 1 else str(af.get("id", ""))
+            viol_key = (str(af.get("file", "")), int(str(af.get("line", 0))), rule_num)
             if viol_key not in seen_violations:
                 all_findings.append(af)
                 seen_violations.add(viol_key)
 
     # Tally results
-    scorecard = {}
+    scorecard: Dict[int, Dict[str, Any]] = {}
     for dim_num, dim_name in DIMENSIONS:
         scorecard[dim_num] = {
             "name": dim_name,
@@ -381,10 +388,10 @@ def run_audit(target_dir: str, max_file_lines: int = 800, max_dir_depth: int = 6
         }
         
     for finding in all_findings:
-        dim = finding["dim"]
-        sev = finding["severity"]
+        dim = int(str(finding["dim"]))
+        sev = str(finding["severity"])
         if dim in scorecard:
-            scorecard[dim][sev] += 1
+            scorecard[dim][sev] = int(scorecard[dim].get(sev, 0)) + 1
             
     return all_findings, scorecard
 
