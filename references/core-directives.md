@@ -161,3 +161,19 @@ To prevent codebase fragmentation and cognitive overhead:
 2. **File Splitting**: When any file exceeds 400 lines, evaluate splitting into cohesive sub-units. When it exceeds 800 lines, splitting is mandatory unless justified by an ADR.
 3. **Directory Depth Limit**: Deep nesting beyond 6 directory levels (e.g. `src/a/b/c/d/e/f/g/file.ts`) is mechanically rejected. Keep hierarchies flat and cohesive.
 4. **Zero Dumping Grounds**: Folders named `utils`, `helpers`, `misc`, `common`, or `shared-utils` with vague purposes are rejected. Utilities must be categorized by domain or technical concern (e.g. `src/crypto/`, `src/telemetry/`, `src/validation/`).
+
+### 3.6 Operating System Self-Healing & Free-Tier/Sovereign Governance
+EP-OS operates as an autonomous operating system rather than a passive documentation standard:
+1. **Prerequisite Diagnostic & Self-Healing (`ep doctor [--heal]`)**: Validates 7 core operating system prerequisites:
+   - Git Hooks: Native client-side pre-commit, pre-push, and commit-msg hooks.
+   - VCS Promotion Topology: Full presence of promotion branches (`main`, `test`, `stage`, `prod`).
+   - Ownership: Deterministic `.github/CODEOWNERS` mapping every monorepo subproject.
+   - Task Contracts: Valid `project.json` declaring `lint`, `test`, `build`, and `audit` Nx targets.
+   - Governance Manifest: Active root `AGENT.md`.
+   - OCI Container Engine: Available rootless Podman or Docker engine.
+   - Tailored Product Skill: Compiled `PRODUCT_SKILL.md`.
+   Running `ep doctor --heal` autonomously creates, installs, and configures all missing components.
+2. **Sovereign & Free-Tier Governance**:
+   In environments lacking paid cloud branch protection rulesets (such as GitHub Free private repositories or air-gapped sovereign environments), EP-OS enforces zero-compromise multi-tier governance locally via zero-dependency native git hooks. Force-pushes, direct rogue commits to `test`/`stage`/`prod`, and agent production merges are mechanically blocked by client-side hooks without requiring any paid SaaS subscription.
+3. **Tailored Product Skill Generation (`ep skill generate`)**:
+   To prevent AI agent context memory exhaustion and eliminate sequential file-reading latency, EP-OS inspects monorepo subprojects and compiles a dedicated, compact `< 150` line `PRODUCT_SKILL.md`. This localized skill includes project-to-profile mappings, active architectural invariants, and single-turn ingestion commands (`ep pack`), allowing agents to execute at peak velocity.

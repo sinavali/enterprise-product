@@ -40,7 +40,7 @@ def cmd_session(args: argparse.Namespace) -> int:
             seqs = [int(f.split("_")[0]) for f in existing]
             next_seq = max(seqs) + 1
 
-        branch_res = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, check=False)
+        branch_res = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, check=False, timeout=30)
         current_branch = branch_res.stdout.strip() if branch_res.returncode == 0 else "unknown"
         status_res = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, check=False, timeout=30)
         modified = []

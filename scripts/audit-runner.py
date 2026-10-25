@@ -13,6 +13,7 @@ import datetime
 import json
 import os
 import re
+import subprocess
 import sys
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -183,6 +184,8 @@ EXCLUDED_DIRS = {
     ".git",
     ".nx",
     "dist",
+    "dist-next",
+    ".next",
     "build",
     "coverage",
     ".cache",

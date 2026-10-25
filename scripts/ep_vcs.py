@@ -14,12 +14,18 @@ from typing import List, Optional, Tuple
 
 class BaseGitProvider:
     def get_current_branch(self) -> str:
-        res = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, check=False)
-        return res.stdout.strip() if res.returncode == 0 else "unknown"
+        try:
+            res = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, check=False, timeout=10)
+            return res.stdout.strip() if res.returncode == 0 else "unknown"
+        except Exception:
+            return "unknown"
 
     def get_remote_url(self) -> str:
-        res = subprocess.run(["git", "config", "remote.origin.url"], capture_output=True, text=True, check=False)
-        return res.stdout.strip() if res.returncode == 0 else ""
+        try:
+            res = subprocess.run(["git", "config", "remote.origin.url"], capture_output=True, text=True, check=False, timeout=10)
+            return res.stdout.strip() if res.returncode == 0 else ""
+        except Exception:
+            return ""
 
     def sync_check(self, base_branch: str = "main", branches: Optional[List[str]] = None) -> Tuple[bool, List[str]]:
         if not branches:
@@ -99,7 +105,7 @@ class GitLabProvider(BaseGitProvider):
             "--title", title,
             "--description", f"{body}\n\n> [!CAUTION]\n> **STRICT HUMAN-ONLY GATE**: AI agents are forbidden from merging this MR."
         ]
-        return subprocess.run(cmd, check=False).returncode
+        return subprocess.run(cmd, check=False, timeout=30).returncode
 
 
 class LocalGitProvider(BaseGitProvider):
@@ -125,8 +131,11 @@ class LocalGitProvider(BaseGitProvider):
 
 
 def get_git_provider() -> BaseGitProvider:
-    res = subprocess.run(["git", "config", "remote.origin.url"], capture_output=True, text=True, check=False)
-    remote = res.stdout.strip().lower()
+    try:
+        res = subprocess.run(["git", "config", "remote.origin.url"], capture_output=True, text=True, check=False, timeout=10)
+        remote = res.stdout.strip().lower()
+    except Exception:
+        remote = ""
     if "github.com" in remote:
         return GitHubProvider()
     elif "gitlab.com" in remote:
@@ -161,15 +170,25 @@ def cmd_vcs(args: argparse.Namespace) -> int:
         branches = ["test", "stage", "prod"]
         print(f"=== Initializing Multi-Tier VCS Branches from '{base}' ===")
         for b in branches:
-            res_check = subprocess.run(["git", "rev-parse", "--verify", b], capture_output=True, text=True, check=False)
+            res_check = subprocess.run(["git", "rev-parse", "--verify", b], capture_output=True, text=True, check=False, timeout=10)
             if res_check.returncode == 0:
                 print(f"  ℹ️ Branch '{b}' already exists.")
             else:
-                res_create = subprocess.run(["git", "branch", b, base], capture_output=True, text=True, check=False)
+                res_create = subprocess.run(["git", "branch", b, base], capture_output=True, text=True, check=False, timeout=10)
                 if res_create.returncode == 0:
                     print(f"  ✅ Created branch '{b}' at '{base}'.")
                 else:
                     print(f"  ❌ Failed to create '{b}': {res_create.stderr.strip()}", file=sys.stderr)
+
+        if getattr(args, "push", True):
+            res_rem = subprocess.run(["git", "remote"], capture_output=True, text=True, check=False, timeout=10)
+            if "origin" in res_rem.stdout.splitlines():
+                print("Publishing promotion branches to remote 'origin'...")
+                res_push = subprocess.run(["git", "push", "-u", "origin", "test", "stage", "prod"], capture_output=True, text=True, check=False, timeout=60)
+                if res_push.returncode == 0:
+                    print("  ✅ Successfully published 'test', 'stage', and 'prod' to 'origin'.")
+                else:
+                    print(f"  ℹ️ Remote push status: {res_push.stderr.strip() or res_push.stdout.strip()}")
         print("[OK] Multi-Tier VCS topology ready.")
         return 0
     return 0
