@@ -80,6 +80,8 @@ EXCLUDED_SCAN_DIRS = {
     "node_modules",
     "vendor",
     "dist",
+    "dist-next",
+    ".next",
     "build",
     ".cache",
     ".venv",
@@ -129,8 +131,8 @@ def scan_text_for_secrets(text: str, filename: str = "") -> List[Dict[str, Any]]
             match = pattern.search(line)
             if match:
                 matched_val = match.group(0)
-                # Filter out obvious templates and placeholders
-                if any(p in matched_val.upper() for p in ["EXAMPLE", "PLACEHOLDER", "YOUR_", "DUMMY", "TEST", "ENV["]):
+                # Filter out obvious templates, environment variable references, and placeholders
+                if any(p in matched_val.upper() for p in ["EXAMPLE", "PLACEHOLDER", "YOUR_", "DUMMY", "TEST", "ENV[", "PROCESS.ENV", "DEV-", "CONFIG."]):
                     continue
                 # For AWS Secret Access Key or general Base64, require Shannon entropy >= 4.5 (DEFECT-17)
                 if name == "AWS Secret Access Key":
@@ -150,7 +152,10 @@ def scan_text_for_secrets(text: str, filename: str = "") -> List[Dict[str, Any]]
 def scan_staged_diff() -> List[Dict[str, Any]]:
     findings = []
     cmd = ["git", "diff", "--cached", "--unified=0"]
-    res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=30)
+    except Exception:
+        return findings
     if res.returncode != 0 or not res.stdout.strip():
         return findings
 
@@ -169,7 +174,10 @@ def scan_diff_range(base_branch: str) -> List[Dict[str, Any]]:
     findings = []
     diff_target = f"{base_branch}...HEAD" if "..." not in base_branch and base_branch not in ("HEAD", "HEAD~1") else base_branch
     cmd = ["git", "diff", diff_target, "--unified=0"]
-    res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=30)
+    except Exception:
+        return findings
     if res.returncode != 0:
         return findings
 

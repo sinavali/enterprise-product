@@ -314,6 +314,8 @@ affected_projects: ["services/order", "services/billing"]
                 str(BIN_DIR / "check-nc-items"),
                 "--dir",
                 self.temp_dir,
+                "--as-of-date",
+                "2026-10-12",
                 "--json",
             ],
             capture_output=True,

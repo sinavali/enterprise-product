@@ -11,6 +11,7 @@ import collections
 import concurrent.futures
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -260,7 +261,7 @@ def cmd_run_many(args: argparse.Namespace) -> int:
         selected = [p.strip() for p in args.projects.split(",") if p.strip()]
     elif getattr(args, "affected", False):
         base = getattr(args, "base", "origin/main") or "origin/main"
-        res = subprocess.run(["git", "diff", "--name-only", f"{base}...HEAD"], capture_output=True, text=True, check=False)
+        res = subprocess.run(["git", "diff", "--name-only", f"{base}...HEAD"], capture_output=True, text=True, check=False, timeout=30)
         diff_files = [f.strip() for f in res.stdout.splitlines() if f.strip()]
         for p_name, p_data in projects.items():
             p_prefix = p_data["_root"].lstrip("./") + "/"
