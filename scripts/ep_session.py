@@ -10,7 +10,24 @@ import os
 import re
 import subprocess
 import sys
-from typing import Dict, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
+
+if TYPE_CHECKING:
+    from scripts.ep_ops import atomic_write
+else:
+    try:
+        from scripts.ep_ops import atomic_write
+    except ImportError:
+        try:
+            from ep_ops import atomic_write
+        except ImportError:
+            def atomic_write(filepath: str, content: str, mode: str = "w", encoding: str = "utf-8") -> None:
+                dir_name = os.path.dirname(os.path.abspath(filepath))
+                os.makedirs(dir_name, exist_ok=True)
+                tmp_file = f"{filepath}.tmp.{os.getpid()}"
+                with open(tmp_file, mode, encoding=encoding) as f:
+                    f.write(content)
+                os.replace(tmp_file, filepath)
 
 
 def parse_porcelain_line(line: str) -> Optional[str]:
@@ -62,12 +79,10 @@ def cmd_session(args: argparse.Namespace) -> int:
 
         filename = f"{next_seq:04d}_state.json"
         state_path = os.path.join(session_dir, filename)
-        with open(state_path, "w", encoding="utf-8") as f:
-            json.dump(state, f, indent=2)
+        atomic_write(state_path, json.dumps(state, indent=2) + "\n")
 
         current_path = os.path.join(session_dir, "current.json")
-        with open(current_path, "w", encoding="utf-8") as f:
-            json.dump(state, f, indent=2)
+        atomic_write(current_path, json.dumps(state, indent=2) + "\n")
 
         registry = {}
         if os.path.exists(registry_file):
@@ -83,8 +98,7 @@ def cmd_session(args: argparse.Namespace) -> int:
             "task": state["task"],
             "mode": state["mode"],
         }
-        with open(registry_file, "w", encoding="utf-8") as f:
-            json.dump(registry, f, indent=2)
+        atomic_write(registry_file, json.dumps(registry, indent=2) + "\n")
 
         # Retention pruning (keep latest 15)
         all_states = sorted([f for f in os.listdir(session_dir) if re.match(r"^\d{4}_state\.json$", f)])
@@ -183,10 +197,10 @@ def cmd_session(args: argparse.Namespace) -> int:
 
         if collisions:
             print("[COLLISION] Concurrent Session Mutation Conflict Detected!", file=sys.stderr)
-            for s1, s2, overlap in collisions:
-                print(f"  ❌ Conflict between Session '{s1}' and '{s2}':", file=sys.stderr)
-                for f in overlap:
-                    print(f"     • {f}", file=sys.stderr)
+            for coll_s1, coll_s2, coll_overlap in collisions:
+                print(f"  ❌ Conflict between Session '{coll_s1}' and '{coll_s2}':", file=sys.stderr)
+                for coll_f in coll_overlap:
+                    print(f"     • {coll_f}", file=sys.stderr)
             print("\nRemediation: Commit or stash changes before switching contexts, or coordinate worktree separation.", file=sys.stderr)
             return 1
 

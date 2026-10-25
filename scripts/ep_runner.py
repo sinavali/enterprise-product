@@ -12,6 +12,7 @@ import concurrent.futures
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 import time
@@ -49,6 +50,9 @@ def discover_projects(root_dir: str = ".") -> Dict[str, Dict[str, Any]]:
     return projects
 
 
+SHELL_CHARS = set(";&|><$`\n\r*?()[]{}~#")
+
+
 def execute_target(
     project_name: str, target_name: str, target_cfg: Dict[str, Any], project_root: str, timeout: int = 300
 ) -> Tuple[int, str, float]:
@@ -60,13 +64,17 @@ def execute_target(
     cwd = options.get("cwd") or project_root
     t_start = time.time()
     try:
-        res = subprocess.run(command, shell=True, cwd=cwd, capture_output=True, text=True, check=False, timeout=timeout)
+        if isinstance(command, str) and not any(c in command for c in SHELL_CHARS):
+            cmd_args = shlex.split(command)
+            res = subprocess.run(cmd_args, shell=False, cwd=cwd, capture_output=True, text=True, check=False, timeout=timeout)
+        else:
+            res = subprocess.run(command, shell=True, executable="/bin/sh", cwd=cwd, capture_output=True, text=True, check=False, timeout=timeout)
         elapsed = time.time() - t_start
         output = res.stdout if res.returncode == 0 else f"{res.stdout}\n{res.stderr}".strip()
         return res.returncode, output, elapsed
     except subprocess.TimeoutExpired:
         elapsed = time.time() - t_start
-        return 124, f"Target '{project_name}:{target_name}' timed out after 300s", elapsed
+        return 124, f"Target '{project_name}:{target_name}' timed out after {timeout}s", elapsed
 
 
 def get_project_dependencies(p_name: str, p_data: Dict[str, Any], projects: Dict[str, Dict[str, Any]]) -> Set[str]:

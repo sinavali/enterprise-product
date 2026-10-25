@@ -121,7 +121,7 @@ def is_test_path(filename: str) -> bool:
 
 
 def scan_text_for_secrets(text: str, filename: str = "") -> List[Dict[str, Any]]:
-    findings = []
+    findings: List[Dict[str, Any]] = []
     # Skip test files and template files from false-positive tripping on placeholders (DEFECT-04)
     if is_test_path(filename):
         return findings
@@ -150,7 +150,7 @@ def scan_text_for_secrets(text: str, filename: str = "") -> List[Dict[str, Any]]
 
 
 def scan_staged_diff() -> List[Dict[str, Any]]:
-    findings = []
+    findings: List[Dict[str, Any]] = []
     cmd = ["git", "diff", "--cached", "--unified=0"]
     try:
         res = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=30)
@@ -171,7 +171,7 @@ def scan_staged_diff() -> List[Dict[str, Any]]:
 
 
 def scan_diff_range(base_branch: str) -> List[Dict[str, Any]]:
-    findings = []
+    findings: List[Dict[str, Any]] = []
     diff_target = f"{base_branch}...HEAD" if "..." not in base_branch and base_branch not in ("HEAD", "HEAD~1") else base_branch
     cmd = ["git", "diff", diff_target, "--unified=0"]
     try:

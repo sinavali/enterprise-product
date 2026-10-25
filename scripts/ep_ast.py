@@ -12,7 +12,7 @@ import re
 import shutil
 import subprocess
 import sys
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, cast
 
 AST_GREP_BIN = shutil.which("ast-grep")
 
@@ -126,10 +126,10 @@ def is_ast_grep_available() -> bool:
 
 
 def run_ast_query(pattern: str, scope: str = ".", lang: Optional[str] = None) -> List[Dict[str, Any]]:
-    if not is_ast_grep_available():
+    if not is_ast_grep_available() or not AST_GREP_BIN:
         return []
 
-    cmd = [AST_GREP_BIN, "run", "--pattern", pattern, scope, "--json"]
+    cmd: List[str] = [AST_GREP_BIN, "run", "--pattern", pattern, scope, "--json"]
     if lang:
         cmd.extend(["--lang", lang])
 
@@ -148,7 +148,9 @@ def scan_structural_rules(scope: str = ".") -> List[Dict[str, Any]]:
 
     findings = []
     for rule in STRUCTURAL_AST_RULES:
-        for lang, pattern in rule["patterns"]:
+        patterns = cast(List[Tuple[str, str]], rule.get("patterns", []))
+        path_filter = cast(Callable[[str], bool], rule.get("path_filter", lambda p: True))
+        for lang, pattern in patterns:
             matches = run_ast_query(pattern, scope=scope, lang=lang)
             for m in matches:
                 file_path = m.get("file", "")
@@ -156,7 +158,7 @@ def scan_structural_rules(scope: str = ".") -> List[Dict[str, Any]]:
                 parts = set(norm_p.split("/"))
                 if parts.intersection({"node_modules", "dist", "dist-next", ".next", "build", ".nx", "coverage", ".git", ".cache"}):
                     continue
-                if not rule["path_filter"](file_path):
+                if not path_filter(file_path):
                     continue
 
                 # For $A == $A identity patterns, ensure single variable meta-variables match if present

@@ -13,17 +13,20 @@ import os
 import re
 import subprocess
 import sys
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 if SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, SCRIPTS_DIR)
 
-try:
+if TYPE_CHECKING:
     from scripts.ep_stack import detect_stack
-except ImportError:
-    from ep_stack import detect_stack
+else:
+    try:
+        from scripts.ep_stack import detect_stack
+    except ImportError:
+        from ep_stack import detect_stack
 
 EXCLUDED_ADOPT_DIRS = {
     ".git",

@@ -12,12 +12,29 @@ import os
 import re
 import subprocess
 import sys
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-try:
+if TYPE_CHECKING:
+    from scripts.ep_ops import atomic_write
     from scripts.ep_stack import STACK_DEFINITIONS
-except ImportError:
-    from ep_stack import STACK_DEFINITIONS
+else:
+    try:
+        from scripts.ep_ops import atomic_write
+    except ImportError:
+        try:
+            from ep_ops import atomic_write
+        except ImportError:
+            def atomic_write(filepath: str, content: str, mode: str = "w", encoding: str = "utf-8") -> None:
+                dir_name = os.path.dirname(os.path.abspath(filepath))
+                os.makedirs(dir_name, exist_ok=True)
+                tmp_file = f"{filepath}.tmp.{os.getpid()}"
+                with open(tmp_file, mode, encoding=encoding) as f:
+                    f.write(content)
+                os.replace(tmp_file, filepath)
+    try:
+        from scripts.ep_stack import STACK_DEFINITIONS
+    except ImportError:
+        from ep_stack import STACK_DEFINITIONS
 
 LANG_ALIASES = {
     "c#": "dotnet",
@@ -106,8 +123,7 @@ def cmd_init(args: argparse.Namespace) -> int:
                 "audit": {"executor": "nx:run-commands", "options": {"command": audit_c, "cwd": target_dir}},
             },
         }
-    with open(os.path.join(target_dir, "project.json"), "w", encoding="utf-8") as f:
-        json.dump(project_json, f, indent=2)
+    atomic_write(os.path.join(target_dir, "project.json"), json.dumps(project_json, indent=2) + "\n")
 
     agent_md = f"""---
 project_name: "{name}"
@@ -148,8 +164,7 @@ Domain responsibility and business purpose of {name}.
 - Real ephemeral container verification for databases.
 - Domain coverage target $\\ge 95\\%$, adapter coverage $\\ge 80\\%$.
 """
-    with open(os.path.join(target_dir, "AGENT.md"), "w", encoding="utf-8") as f:
-        f.write(agent_md)
+    atomic_write(os.path.join(target_dir, "AGENT.md"), agent_md)
 
     if profile == "A":
         for d in ["src/domain/entities", "src/domain/events", "src/application/use-cases", "src/infrastructure/adapters", "tests/unit", "tests/integration"]:
@@ -200,18 +215,15 @@ def cmd_manifest(args: argparse.Namespace) -> int:
             agent_content = f.read()
 
         claude_path = os.path.join(root_dir, "CLAUDE.md")
-        with open(claude_path, "w", encoding="utf-8") as f:
-            f.write(f"<!-- AUTO-GENERATED FROM AGENT.md by ep manifest sync. DO NOT EDIT DIRECTLY. -->\n\n{agent_content}")
+        atomic_write(claude_path, f"<!-- AUTO-GENERATED FROM AGENT.md by ep manifest sync. DO NOT EDIT DIRECTLY. -->\n\n{agent_content}")
         count += 1
 
         cursor_path = os.path.join(root_dir, ".cursorrules")
-        with open(cursor_path, "w", encoding="utf-8") as f:
-            f.write(f"# Cursor AI Rules - Auto-generated from AGENT.md\n\n{agent_content}")
+        atomic_write(cursor_path, f"# Cursor AI Rules - Auto-generated from AGENT.md\n\n{agent_content}")
         count += 1
 
         windsurf_path = os.path.join(root_dir, ".windsurfrules")
-        with open(windsurf_path, "w", encoding="utf-8") as f:
-            f.write(f"# Windsurf Rules - Auto-generated from AGENT.md\n\n{agent_content}")
+        atomic_write(windsurf_path, f"# Windsurf Rules - Auto-generated from AGENT.md\n\n{agent_content}")
         count += 1
 
     for cur_root, dirs, files in os.walk(root_dir):
@@ -221,8 +233,7 @@ def cmd_manifest(args: argparse.Namespace) -> int:
             sub_claude = os.path.join(cur_root, "CLAUDE.md")
             with open(sub_agent, "r", encoding="utf-8") as f:
                 c = f.read()
-            with open(sub_claude, "w", encoding="utf-8") as f:
-                f.write(f"<!-- AUTO-GENERATED FROM AGENT.md by ep manifest sync -->\n\n{c}")
+            atomic_write(sub_claude, f"<!-- AUTO-GENERATED FROM AGENT.md by ep manifest sync -->\n\n{c}")
             count += 1
 
     print(f"[OK] Manifest projection complete: {count} agent manifest files synchronized.")
