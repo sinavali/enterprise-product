@@ -79,6 +79,8 @@ When executing tasks, follow these operational velocity rules:
 | `release` | Orchestrate SemVer bumps and signed release tags | `ep release create` / `ep release finalize` |
 | `adopt` | Brownfield monorepo onboarding and baseline ratcheting | `ep adopt --apply` |
 | `ops` | Operational readiness, container resolver, SLO validation, code ownership, DORA & perf | `ep container`, `ep slo`, `ep codeowners`, `ep dora`, `ep iac`, `ep perf` |
+| `doctor` | Operating system prerequisite diagnostic & autonomous self-healing | `ep doctor [--heal]` |
+| `skill` | Generate compact product-specific tailored skill manifest | `ep skill generate` |
 
 ---
 

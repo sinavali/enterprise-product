@@ -74,7 +74,7 @@ Putting high-cardinality values into metric label dimensions causes exponential 
 
 ### 4.2 Exemplars
 Prometheus and OpenTelemetry exemplars link metrics directly to traces:
-- When a latency histogram bucket records an observation $> 99$th percentile, it must attach an exemplar containing the active `trace_id`.
+- When a latency histogram bucket records an observation $> 99\text{th}$ percentile, it must attach an exemplar containing the active `trace_id`.
 - This enables one-click transitions in Grafana/APM from a latency spike in a metric dashboard directly to the exact distributed trace waterfall.
 
 ---

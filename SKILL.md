@@ -1,6 +1,10 @@
 ---
 name: enterprise-product
-description: Supreme enterprise gatekeeper and engineering operating system for polyglot monorepos. Enforces production-grade rigor, DDD/Hexagonal architecture, Nx orchestration, 10-dimension audits, value-driven testing, Change Surfaces, and 2-Pass PR self-audits.
+description: >-
+  Supreme enterprise gatekeeper and engineering operating system (EP-OS) for polyglot monorepos.
+  Use this skill when developing, refactoring, architecting, or auditing polyglot monorepos, enforcing
+  DDD/Hexagonal architecture, running 10-dimension enterprise audits, validating Change Surfaces, checking
+  database migrations, diagnosing operating system prerequisites via ep doctor, or orchestrating multi-tier VCS promotion gates.
 ---
 
 # Skill — `enterprise-product`
@@ -46,7 +50,7 @@ The **supreme enterprise gatekeeper and engineering operating system (EP-OS)** f
 
 ## 2. Operational Modes
 
-Agents operate under one of ten distinct operational modes. When invoked, determine or declare the active mode:
+Agents operate under one of fourteen distinct operational modes. When invoked, determine or declare the active mode:
 
 | Mode | Purpose | Modifies Files | Required Pre-condition |
 |---|---|---|---|
@@ -60,6 +64,8 @@ Agents operate under one of ten distinct operational modes. When invoked, determ
 | `session` | Manages multi-session workspace checkpoints, state pause/resume, and retention. | Yes (`.ep/sessions/`) | Session start, pause, resume, or checkpoint. |
 | `sync` | Validates multi-tier branch synchronization across main, test, stage, prod. | No | Pre-push, pre-merge, or promotion. |
 | `release` | Orchestrates Hybrid Dual-Tier SemVer bumps, signed git tags, and release notes. | Yes (`docs/releases/`) | Production merge or milestone completion. |
+| `adopt` | Brownfield monorepo onboarding and baseline ratcheting. | Yes (`.ep/`) | Existing unmanaged codebase. |
+| `ops` | Operational readiness: containers, SLOs, code ownership, DORA & perf. | No | Operational evaluation or deployment preflight. |
 | `doctor` | Operating system prerequisite diagnostic & autonomous self-healing. | Yes (If `--heal`) | Preflight, adoption, or periodic check. |
 | `skill` | Generates compact product-specific tailored skill manifest. | Yes (`PRODUCT_SKILL.md`) | Adoption, profile changes, context hygiene. |
 
@@ -163,7 +169,7 @@ Do not load all reference files simultaneously. Read on demand based on current 
 - `references/audit-taxonomy.md` — 10-Dimension Audit Guide, verification steps, scoring.
 - `references/testing-matrix.md` — Value-driven testing rules, Testcontainers, failure testing, coverage gates.
 - `references/vcs-pr-protocol.md` — Monorepo git worktrees, Conventional Commits, 4-tier branches, 2-Pass PR Self-Audit.
-- `references/documentation-system.md` — Change Surface lifecycle, ADRs, topology graphing (`ep graph`).
+- `references/documentation-system.md` — Change Surface lifecycle, ADRs, topology graphing (`ep graph`), and Enterprise Template Catalog.
 - `references/nc-protocol.md` — NEED_CLARIFICATION schema, lifecycle, 14-day escalation mechanics.
 - `references/deep-observability.md` — Golden Signals, RED/USE methods, W3C Trace Context propagation, Metric Cardinality Bounding, RUM & Synthetics.
 - `references/compliance-matrix.md` — SOC 2, ISO 27001, GDPR, data classification tiers, and immutable mutation audit logging.
@@ -177,11 +183,13 @@ Do not load all reference files simultaneously. Read on demand based on current 
 All mechanical gates and orchestrations are accessible through the single executable entrypoint `scripts/bin/ep` (or `python3 scripts/ep.py`):
 
 ```bash
-# Scaffolding, Worktrees & Manifests
+# Scaffolding, Worktrees, CI & Manifests
 ep init <name> --profile [A|B|C|D] --lang [go|rust|ts|dart|php]
 ep worktree create <branch-name>
 ep worktree remove <branch-name>
 ep manifest sync [--root <dir>]
+ep ci [init] [--platform github|gitlab] [--root <dir>]
+ep skill [generate] [--output <path>] [--root <dir>]
 ep preflight
 
 # Change Surface & Blast Radius
@@ -203,14 +211,19 @@ ep run-many --target=<target> [--projects=p1,p2] [--parallel] [--affected]
 ep ast scan [--scope <dir>]
 ep graph [--format mermaid|json] [--check-boundaries]
 
-# Audits, Invariants & Migrations
+# Audits, Invariants, Health & Governance Verification
 ep audit [--diff origin/main...HEAD | --scope <path>]
+ep doctor [--heal] [--root <monorepo-root>]
 ep migration check [--dir <migrations-dir>]
-ep verify [--root <monorepo-root>]
+ep verify [--root <monorepo-root>] [--heal]
 ep nc check [--max-age 14]
+ep policy
+ep telemetry
+ep finops
 
 # Git, VCS & Multi-Branch Governance
 ep vcs sync-check
+ep vcs init-branches [--base <branch>] [--push|--no-push]
 ep pr create-prod [--title <title>] [--body <body>]
 ep release create <version>
 ep release finalize --prod
