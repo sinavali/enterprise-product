@@ -1,9 +1,10 @@
 # Enterprise-Product (EP-OS)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Release: v1.0.0 LTS](https://img.shields.io/badge/Release-v1.0.0%20LTS-blue.svg)](docs/releases/RELEASE_v1.0.0_LTS.md)
 [![Monorepo: Nx & DAG](https://img.shields.io/badge/Orchestrator-Nx%20%2F%20EP--Runner-143055.svg)](references/monorepo-nx-standard.md)
 [![Architecture: DDD + Hexagonal](https://img.shields.io/badge/Architecture-DDD%20%2B%20Hexagonal-8A2BE2.svg)](references/architectural-profiles.md)
-[![Tests: 92 Passing](https://img.shields.io/badge/Tests-92%20Passing-brightgreen.svg)](tests/)
+[![Tests: 164 Passing](https://img.shields.io/badge/Tests-164%20Passing-brightgreen.svg)](tests/)
 
 **The production-grade engineering operating system and mechanical gatekeeper for polyglot monorepos.**
 
@@ -92,20 +93,38 @@ All developer and agent operations are consolidated under the zero-dependency `e
 
 | Category | Command | Description |
 |---|---|---|
-| **Scaffolding** | `ep init <name> --profile A\|B\|C\|D --lang <stack>` | Scaffold compliant DDD subproject |
+| **Diagnostic & Healing** | `ep doctor [--heal]` | Audit operating system prerequisites & autonomously heal missing items |
+| | `ep skill [generate]` | Compile lean, product-specific tailored skill manifest (`PRODUCT_SKILL.md`) |
+| | `ep preflight` | Verify agent execution capabilities & access permissions |
+| **Scaffolding & CI** | `ep init <name> --profile A\|B\|C\|D --lang <stack>` | Scaffold compliant DDD subproject |
+| | `ep ci [init] [--platform github\|gitlab]` | Stamp standardized CI/CD pipeline workflows |
 | **Change Surface** | `ep surface init` | Auto-detect modified projects and generate `CHANGE_SURFACE.md` |
+| | `ep surface validate <file>` | Validate syntax, frontmatter, and completeness of Change Surface |
 | | `ep surface check-diff` | Halt execution if changes exceed declared blast radius |
-| **Task Execution** | `ep run <project>:<target>` | Execute target in topological dependency order |
-| | `ep run-many --target=<target> --parallel` | Run target across affected projects |
+| **Task Execution** | `ep run <project>:<target>` | Execute target in topological DAG dependency order |
+| | `ep run-many --target=<target> --parallel` | Run target across affected projects concurrently |
+| **Context & Speed** | `ep pack [--surface] [--diff] [--files ...]` | Batch-pack codebase context into single bundle (anti-slowness) |
 | **Code Intelligence** | `ep ast scan [--scope <dir>]` | Structural AST syntax scanning via `ast-grep` |
 | | `ep graph --check-boundaries` | Lint Hexagonal domain and library boundaries |
-| **Audit & Verify** | `ep audit [--diff origin/main]` | Run 10-Dimension Enterprise Audit with scorecard |
-| | `ep verify` | Run full mechanical gatekeeper verification suite |
-| **Git & Multi-Branch**| `ep vcs sync-check` | Validate alignment between `main`, `test`, `stage`, and `prod` |
+| **Audit & Gatekeeper** | `ep audit [--diff origin/main] [--scope <dir>]` | Run 10-Dimension Enterprise Audit with scorecard |
+| | `ep verify [--heal]` | Run full parallel mechanical gatekeeper verification suite |
+| | `ep nc check [--max-age 14]` | Audit `NEED_CLARIFICATION` items for 14-day merge block |
+| | `ep migration check [--diff]` | Zero-downtime Expand/Contract database migration linter |
+| **Security & Ops** | `ep security scan [--staged] [--diff]` | Pre-commit secret & credential scanner (Shannon entropy) |
+| | `ep iac [--dir <dir>]` | Containerfile & orchestration security vulnerability gate |
+| | `ep license check [--sbom]` | Dependency copyleft compliance & SBOM generator |
+| | `ep slo [--file <path>]` | Validate SLO schemas, thresholds, and error budgets |
+| | `ep container [status\|detect]` | Smart OCI container engine detector & socket resolver |
+| **Git & Governance** | `ep vcs sync-check` | Validate alignment between `main`, `test`, `stage`, and `prod` |
+| | `ep vcs init-branches` | Initialize multi-tier promotion branches (`test`, `stage`, `prod`) |
 | | `ep pr create-prod` | Create human-only production PR with auto-merge blocked |
-| **Sessions & State** | `ep session save` / `ep session resume` | Checkpoint and restore agent working memory |
-| **Adoption & Hooks** | `ep adopt [--apply]` | Scan and onboard brownfield monorepos |
 | | `ep hooks install` | Install zero-dependency native git pre-commit hooks |
+| | `ep codeowners` | Audit monorepo code ownership and coverage mapping |
+| | `ep dora [--days 30]` | Calculate git-derived DORA metrics (Deploy Frequency, CFR) |
+| **Sessions & State** | `ep session save` / `ep session resume` | Checkpoint and restore agent working memory |
+| | `ep session check-collision` | Detect cross-agent worktree collisions & concurrent edits |
+| **Adoption & Sync** | `ep adopt [--apply] [--profile <profile>]` | Scan and onboard brownfield monorepos |
+| | `ep sync-skill [--check] [--direction]` | Synchronize skill directory with workspace repository |
 
 ---
 
@@ -124,27 +143,43 @@ automatically projects instructions into `CLAUDE.md`, `.cursorrules`, and `.wind
 ```text
 enterprise-product/
 ├── AGENT.md               # Root operational manifest for LLMs & AI coding agents
+├── CLAUDE.md              # Auto-projected manifest for Claude Code
+├── .cursorrules           # Auto-projected manifest for Cursor
+├── .windsurfrules         # Auto-projected manifest for Windsurf
+├── PRODUCT_SKILL.md       # Lean tailored product skill manifest
 ├── README.md              # Human-facing architecture & usage guide (this file)
 ├── SKILL.md               # Antigravity & agent skill declaration
 ├── LICENSE                # MIT License
+├── project.json           # Monorepo root lifecycle targets (lint, test, build, audit)
 ├── references/            # In-depth architectural & operational standards
 │   ├── architectural-profiles.md  # Profiles A (DDD), B (Web), C (Mobile), D (Contracts)
 │   ├── audit-taxonomy.md          # Complete 10-Dimension audit guide & checklists
-│   ├── execution-engine.md        # Zero-latency execution & tool batching
+│   ├── core-directives.md         # Inviolable Tier 1 invariants & autonomous self-healing
+│   ├── deep-observability.md      # Distributed tracing, SLOs, DORA metrics & FinOps
+│   ├── documentation-system.md    # Change Surface, ADRs, NC protocol & template catalog
+│   ├── execution-engine.md        # Zero-latency execution & tool call batching
 │   ├── monorepo-nx-standard.md    # Task DAG & project.json target contracts
 │   ├── testing-matrix.md          # Value-driven testing rules & ephemeral containers
 │   └── vcs-pr-protocol.md         # Multi-branch governance & 2-Pass PR self-audits
 ├── templates/             # Production templates (Change Surface, ADR, project.json, etc.)
 ├── scripts/               # Zero-dependency mechanical CLI tooling (Python 3.10+)
 │   ├── bin/ep             # Unified executable entrypoint
-│   ├── ep.py              # Core CLI router
+│   ├── ep.py              # Core CLI router & subcommand dispatcher
+│   ├── ep_adopt.py        # Brownfield onboarding & baseline ratchets
 │   ├── ep_ast.py          # ast-grep structural code intelligence
+│   ├── ep_context.py      # LLM context packing & token budget bundling
+│   ├── ep_doctor.py       # Operating system diagnostic & autonomous self-healer
+│   ├── ep_hooks.py        # Zero-dependency native git hook manager
+│   ├── ep_ops.py          # POSIX atomic writes, container engines, SLOs, DORA, k6
 │   ├── ep_runner.py       # Standalone topological task DAG runner
-│   ├── ep_scaffold.py     # Subproject generator & manifest sync
-│   ├── ep_session.py      # Multi-session state machine & concurrency check
+│   ├── ep_scaffold.py     # Subproject generator & universal manifest projection
+│   ├── ep_security.py     # Shannon entropy secret scanner & IaC security gate
+│   ├── ep_session.py      # Multi-session state machine & collision checker
+│   ├── ep_stack.py        # Stack detection & language definitions
+│   ├── ep_sync.py         # Skill-workspace bidirectional synchronization
 │   ├── ep_vcs.py          # Multi-tier VCS platform adapters (GitHub, GitLab, Local)
 │   └── audit-runner.py    # 10-Dimension audit engine with baseline ratchets
-└── tests/                 # Comprehensive self-test suite (92 automated tests)
+└── tests/                 # Comprehensive self-test suite (164 automated tests across 19 suites)
 ```
 
 ---
