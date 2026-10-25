@@ -98,3 +98,37 @@ Every ADR conforms to `templates/ADR.template.md` and contains:
 Documentation drift is treated as a software defect during audits:
 - If a pull request modifies domain interfaces, data schemas, or configuration without updating the corresponding documentation, Dimension 9 of the Enterprise Audit will flag a `blocking` finding.
 - The CI pipeline runs doc validation checks to ensure all links and ADR numbers are strictly monotonic and unbroken.
+
+---
+
+## 6. Enterprise Template & Asset Catalog
+
+The `templates/` directory provides standardized, machine-validated scaffolding assets for all EP-OS workflows:
+
+| Category | Template Path | Purpose & Profile Standard |
+|---|---|---|
+| **Governance** | `templates/CHANGE_SURFACE.template.md` | Pre-implementation blast radius and invariant bounding contract |
+| **Governance** | `templates/NEED_CLARIFICATION.template.md` | Formal ambiguity tracking and 14-day aging escalation |
+| **Governance** | `templates/AUDIT_REPORT.template.md` | 10-Dimension Enterprise Audit scorecard and findings log |
+| **Governance** | `templates/PR_CONTRACT.template.md` | 2-Pass PR Self-Audit checklist and merge gate agreement |
+| **Governance** | `templates/ADR.template.md` | Architecture Decision Record schema for Tier 2 deviations |
+| **Governance** | `templates/AGENT.template.md` | Subproject-level `AGENT.md` governance manifest |
+| **Operations** | `templates/RUNBOOK.template.md` | Operational service runbook (health probes, alerts, rollback) |
+| **Operations** | `templates/POSTMORTEM.template.md` | Blameless incident postmortem and root-cause analysis |
+| **Operations** | `templates/THREAT_MODEL.template.md` | STRIDE security threat modeling and data flow analysis |
+| **Operations** | `templates/CHAOS_EXPERIMENT.template.md` | Chaos Mesh and resilience verification hypothesis protocol |
+| **Operations** | `templates/perf-test.k6.js` | k6 load, stress, and latency distribution test script |
+| **Telemetry** | `templates/monitoring/slo.template.yaml` | Service Level Objective (SLO/SLI) target definition |
+| **Telemetry** | `templates/monitoring/alerts.template.yaml` | Multi-window multi-burn-rate Prometheus alerting rules |
+| **Telemetry** | `templates/monitoring/otel-collector-config.template.yaml` | OpenTelemetry Collector pipeline and processor config |
+| **Profiles** | `templates/profiles/node-service-project.json` | Profile A (Backend) Node.js/TypeScript Nx contract |
+| **Profiles** | `templates/profiles/go-service-project.json` | Profile A (Backend) Go/Hexagonal Nx contract |
+| **Profiles** | `templates/profiles/rust-service-project.json` | Profile A (Backend) Rust/Cargo Nx contract |
+| **Profiles** | `templates/profiles/python-service-project.json` | Profile A (Backend) Python/Pytest Nx contract |
+| **Profiles** | `templates/profiles/next-web-project.json` | Profile B (Web) Next.js/React/A11y Nx contract |
+| **Profiles** | `templates/profiles/flutter-mobile-project.json` | Profile C (Mobile) Flutter/Dart/BLoC Nx contract |
+| **Profiles** | `templates/profiles/contracts-project.json` | Profile D (Contracts) OpenAPI/Protobuf codegen contract |
+| **Database** | `templates/audit-log-migration.sql` | Append-only, tamper-evident audit logging schema (Check 4.8) |
+| **Database** | `templates/outbox-migration.sql` | Transactional outbox event publishing table (Check 4.5) |
+| **CI/CD** | `templates/ci-workflow.template.yml` | GitHub Actions multi-tier promotion workflow |
+| **Hooks** | `templates/pre-commit-config.template.yaml` | Native pre-commit mechanical gate configuration |
