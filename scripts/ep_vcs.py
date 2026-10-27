@@ -30,7 +30,7 @@ class BaseGitProvider:
         except Exception:
             return ""
 
-    def sync_check(self, base_branch: str = "main", branches: Optional[List[str]] = None) -> Tuple[bool, List[str]]:
+    def sync_check(self, base_branch: str = "main", branches: Optional[List[str]] = None, root_dir: str = ".") -> Tuple[bool, List[str]]:
         if not branches:
             branches = ["test", "stage", "prod"]
         issues = []
@@ -38,7 +38,7 @@ class BaseGitProvider:
         # Verify base branch exists locally or remotely (DEFECT-05)
         resolved_base = None
         for cand in [base_branch, f"origin/{base_branch}"]:
-            res = subprocess.run(["git", "rev-parse", "--verify", cand], capture_output=True, text=True, check=False, timeout=30)
+            res = subprocess.run(["git", "rev-parse", "--verify", cand], cwd=root_dir, capture_output=True, text=True, check=False, timeout=30)
             if res.returncode == 0:
                 resolved_base = cand
                 break
@@ -49,14 +49,14 @@ class BaseGitProvider:
         for b in branches:
             resolved_b = None
             for cand in [b, f"origin/{b}"]:
-                res_b = subprocess.run(["git", "rev-parse", "--verify", cand], capture_output=True, text=True, check=False, timeout=30)
+                res_b = subprocess.run(["git", "rev-parse", "--verify", cand], cwd=root_dir, capture_output=True, text=True, check=False, timeout=30)
                 if res_b.returncode == 0:
                     resolved_b = cand
                     break
             if not resolved_b:
                 continue
 
-            res_ahead = subprocess.run(["git", "rev-list", f"{resolved_base}..{resolved_b}"], capture_output=True, text=True, check=False, timeout=30)
+            res_ahead = subprocess.run(["git", "rev-list", f"{resolved_base}..{resolved_b}"], cwd=root_dir, capture_output=True, text=True, check=False, timeout=30)
             ahead_commits = [c.strip() for c in res_ahead.stdout.splitlines() if c.strip()]
             if ahead_commits:
                 issues.append(f"Branch '{b}' ({resolved_b}) has {len(ahead_commits)} unmerged commits not reachable from '{base_branch}'. Rogue commits violate promotion pipeline!")

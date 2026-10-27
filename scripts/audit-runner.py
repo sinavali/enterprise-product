@@ -95,7 +95,7 @@ HEURISTIC_RULES = [
         "severity": "blocking",
         "description": "Non-UTC clock or un-timezoned timestamp creation in persistence or domain model; violates Tier 1 UTC convention.",
         "path_regex": r"(domain|models|entities|persistence|db|repositories)[\\/].*\.(ts|js|go|cs|php|py)$",
-        "content_regex": r"(DateTime\.Now\b|datetime\.now\(\)|datetime\.today\(\)|CURRENT_TIMESTAMP\b|TIMESTAMP\s+WITHOUT\s+TIME\s+ZONE)",
+        "content_regex": r"(DateTime\.Now\b|datetime\.now\(\)|datetime\.today\(\)|CURRENT_TIMESTAMP\b|TIMESTAMP\s+WITHOUT\s+TIME\s+ZONE|time\.Now\(\)(?!\.UTC\(\))|\bdate\()",
     },
     {
         "dim": 5,
@@ -144,6 +144,22 @@ HEURISTIC_RULES = [
         "description": "Empty catch block swallowing errors silently without logging or re-throwing.",
         "path_regex": r"\.(ts|js|cs|php)$",
         "content_regex": r"catch\s*\([^\)]*\)\s*\{\s*\}",
+    },
+    {
+        "dim": 8,
+        "id": "RULE-8.1-EMPTY-CATCH",
+        "severity": "blocking",
+        "description": "Empty catch block swallowing errors silently without logging or re-throwing.",
+        "path_regex": r"\.py$",
+        "content_regex": r"except(?:\s+\w+)?:\s*(?:pass|\.\.\.)",
+    },
+    {
+        "dim": 8,
+        "id": "RULE-8.1-EMPTY-CATCH",
+        "severity": "blocking",
+        "description": "Empty catch block swallowing errors silently without logging or re-throwing.",
+        "path_regex": r"\.go$",
+        "content_regex": r"if\s+err\s*!=\s*nil\s*\{\s*\}",
     },
     {
         "dim": 8,
@@ -228,7 +244,7 @@ def scan_file_for_violations(file_path: str, max_file_lines: int = 800) -> List[
         return findings
 
     # Check file size boundary for production source files
-    is_test_file = bool(re.search(r"(\.(spec|test)\.|[\\/]tests?[\\/]|test_)", norm_path, re.IGNORECASE))
+    is_test_file = bool(re.search(r"(\.(spec|test)\.|[\\/]tests?[\\/]|test_|_test\.(go|rs)$|_test\.)", norm_path, re.IGNORECASE))
     if ext in CODE_EXTENSIONS and not is_test_file and len(lines) > max_file_lines:
         findings.append({
             "dim": 2,

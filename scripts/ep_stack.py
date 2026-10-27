@@ -19,7 +19,7 @@ STACK_DEFINITIONS: List[Tuple[str, List[str], str, str, str, str]] = [
     ("swift", ["Package.swift"], "swiftlint --strict", "swift test", "swift build -c release", "swift package audit"),
     ("scala", ["build.sbt"], "sbt scalafix", "sbt test", "sbt package", "sbt dependencyCheck"),
     ("elixir", ["mix.exs"], "mix credo --strict", "mix test", "mix compile", "mix hex.audit"),
-    ("cpp", ["CMakeLists.txt"], "clang-tidy", "ctest", "cmake --build .", "echo 'cpp audit'"),
+    ("cpp", ["CMakeLists.txt"], "clang-tidy", "ctest", "cmake --build .", "cppcheck"),
 ]
 
 

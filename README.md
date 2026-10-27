@@ -4,7 +4,7 @@
 [![Release: v1.0.0 LTS](https://img.shields.io/badge/Release-v1.0.0%20LTS-blue.svg)](docs/releases/RELEASE_v1.0.0_LTS.md)
 [![Monorepo: Nx & DAG](https://img.shields.io/badge/Orchestrator-Nx%20%2F%20EP--Runner-143055.svg)](references/monorepo-nx-standard.md)
 [![Architecture: DDD + Hexagonal](https://img.shields.io/badge/Architecture-DDD%20%2B%20Hexagonal-8A2BE2.svg)](references/architectural-profiles.md)
-[![Tests: 170 Passing](https://img.shields.io/badge/Tests-170%20Passing-brightgreen.svg)](tests/)
+[![Tests: 180 Passing](https://img.shields.io/badge/Tests-180%20Passing-brightgreen.svg)](tests/)
 
 **The production-grade engineering operating system and mechanical gatekeeper for polyglot monorepos.**
 

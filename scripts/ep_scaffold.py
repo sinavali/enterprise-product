@@ -155,7 +155,7 @@ Domain responsibility and business purpose of {name}.
 - **Allowed Outbound Dependencies**: `libs/core-contracts`
 - **Forbidden Dependencies**: Direct cross-boundary domain couplings.
 
-## 3. Local Target Delegations
+## 3. Local Nx Target Delegations
 - `nx lint {name}`
 - `nx test {name}`
 - `nx build {name}`
@@ -190,8 +190,17 @@ def cmd_worktree(args: argparse.Namespace) -> int:
 
     if action == "create":
         worktree_path = f"../worktrees/{branch.replace('/', '-')}"
-        print(f"Creating isolated monorepo worktree for branch '{branch}' at '{worktree_path}'...")
-        res = subprocess.run(["git", "worktree", "add", worktree_path, "-b", branch], check=False, timeout=30)
+        branch_exists = (
+            subprocess.run(["git", "rev-parse", "--verify", f"refs/heads/{branch}"], capture_output=True, text=True, check=False, timeout=10).returncode == 0
+            or subprocess.run(["git", "rev-parse", "--verify", branch], capture_output=True, text=True, check=False, timeout=10).returncode == 0
+            or subprocess.run(["git", "rev-parse", "--verify", f"refs/remotes/origin/{branch}"], capture_output=True, text=True, check=False, timeout=10).returncode == 0
+        )
+        cmd = ["git", "worktree", "add", worktree_path]
+        if not branch_exists:
+            cmd.extend(["-b", branch])
+        else:
+            cmd.append(branch)
+        res = subprocess.run(cmd, check=False, timeout=30)
         if res.returncode != 0:
             return res.returncode
         print(f"[OK] Worktree created at {worktree_path}. Run 'cd {worktree_path} && pnpm install --frozen-lockfile'.")

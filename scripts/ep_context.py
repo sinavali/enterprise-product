@@ -12,6 +12,16 @@ import subprocess
 import sys
 from typing import List, Optional, Set, Tuple
 
+try:
+    from scripts.ep_scaffold import is_surface_unpopulated
+except ImportError:
+    try:
+        from ep_scaffold import is_surface_unpopulated  # type: ignore[import-not-found,no-redef]
+    except ImportError:
+        def is_surface_unpopulated(content: str) -> bool:  # type: ignore[no-redef]
+            placeholder_tokens = ["[Short Descriptive Title]", "[Feature or Task Title]", "[Author or Agent ID]"]
+            return any(tok in content for tok in placeholder_tokens) or "YYYY-MM-DD" in content or not content.strip()
+
 EXCLUDED_DIRS = {
     ".git",
     "node_modules",
@@ -48,12 +58,24 @@ def is_binary_file(filepath: str) -> bool:
 def collect_files_from_surface(root_dir: str = ".") -> List[str]:
     """Extracts declared code surface files from the active Change Surface."""
     target_file = os.path.join(root_dir, "CHANGE_SURFACE.md")
+    needs_fallback = False
     if not os.path.exists(target_file):
+        needs_fallback = True
+    else:
+        try:
+            with open(target_file, "r", encoding="utf-8") as f:
+                c = f.read()
+            if is_surface_unpopulated(c):
+                needs_fallback = True
+        except Exception:
+            needs_fallback = True
+
+    if needs_fallback:
         changes_dir = os.path.join(root_dir, "docs", "changes")
         if os.path.exists(changes_dir):
             changes = sorted(
                 [os.path.join(changes_dir, f) for f in os.listdir(changes_dir) if f.endswith(".md")],
-                key=lambda p: os.path.getmtime(p),
+                key=lambda p: (os.path.getmtime(p), p),
             )
             if changes:
                 target_file = changes[-1]
@@ -193,6 +215,7 @@ def cmd_pack(args: argparse.Namespace) -> int:
         target_files = collect_files_from_surface(root_dir=root_dir)
         if not target_files:
             # Fallback to diff
+            print("[EP-OS PACK] Notice: Active Change Surface is unpopulated or missing; falling back to git diff.", file=sys.stderr)
             target_files = collect_files_from_diff(base="origin/main", root_dir=root_dir)
 
     if not target_files:

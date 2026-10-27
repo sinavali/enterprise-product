@@ -1,7 +1,7 @@
 ---
 title: "Change Surface: [Short Descriptive Title]"
 author: "[Author or Agent ID]"
-created_date: "2026-10-27"
+created_date: "2026-10-28"
 target_branch: "main"
 risk_level: "LOW"                    # LOW | MEDIUM | HIGH | CRITICAL
 affected_projects:

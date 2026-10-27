@@ -23,56 +23,61 @@ for p in [REPO_ROOT, SCRIPTS_DIR]:
     if p not in sys.path:
         sys.path.insert(0, p)
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
+try:
     from scripts.ep_adopt import cmd_adopt
     from scripts.ep_ast import cmd_ast
     from scripts.ep_context import cmd_pack
     from scripts.ep_doctor import cmd_ci, cmd_doctor, cmd_skill, run_doctor
     from scripts.ep_hooks import cmd_hooks
-    from scripts.ep_ops import cmd_codeowners, cmd_container, cmd_dora, cmd_perf, cmd_slo
-    from scripts.ep_runner import cmd_run, cmd_run_many
+    from scripts.ep_ops import cmd_codeowners, cmd_container, cmd_dora, cmd_finops, cmd_perf, cmd_slo, cmd_telemetry
+    from scripts.ep_runner import cmd_graph, cmd_run, cmd_run_many
     from scripts.ep_scaffold import archive_change_surface, cmd_init, cmd_manifest, cmd_preflight, cmd_worktree, is_surface_unpopulated
-    from scripts.ep_security import cmd_iac, cmd_license, cmd_security
+    from scripts.ep_security import cmd_iac, cmd_license, cmd_policy, cmd_security
     from scripts.ep_session import cmd_session
     from scripts.ep_stack import STACK_DEFINITIONS, detect_stack
     from scripts.ep_sync import cmd_sync_skill
     from scripts.ep_vcs import BaseGitProvider, GitHubProvider, GitLabProvider, LocalGitProvider, cmd_pr, cmd_vcs, get_git_provider
-else:
-    try:
-        from scripts.ep_adopt import cmd_adopt
-        from scripts.ep_ast import cmd_ast
-        from scripts.ep_context import cmd_pack
-        from scripts.ep_doctor import cmd_ci, cmd_doctor, cmd_skill, run_doctor
-        from scripts.ep_hooks import cmd_hooks
-        from scripts.ep_ops import cmd_codeowners, cmd_container, cmd_dora, cmd_perf, cmd_slo
-        from scripts.ep_runner import cmd_run, cmd_run_many
-        from scripts.ep_scaffold import archive_change_surface, cmd_init, cmd_manifest, cmd_preflight, cmd_worktree, is_surface_unpopulated
-        from scripts.ep_security import cmd_iac, cmd_license, cmd_security
-        from scripts.ep_session import cmd_session
-        from scripts.ep_stack import STACK_DEFINITIONS, detect_stack
-        from scripts.ep_sync import cmd_sync_skill
-        from scripts.ep_vcs import BaseGitProvider, GitHubProvider, GitLabProvider, LocalGitProvider, cmd_pr, cmd_vcs, get_git_provider
-    except ImportError:
-        from ep_adopt import cmd_adopt
-        from ep_ast import cmd_ast
-        from ep_context import cmd_pack
-        from ep_doctor import cmd_ci, cmd_doctor, cmd_skill, run_doctor
-        from ep_hooks import cmd_hooks
-        from ep_ops import cmd_codeowners, cmd_container, cmd_dora, cmd_perf, cmd_slo
-        from ep_runner import cmd_run, cmd_run_many
-        from ep_scaffold import archive_change_surface, cmd_init, cmd_manifest, cmd_preflight, cmd_worktree, is_surface_unpopulated
-        from ep_security import cmd_iac, cmd_license, cmd_security
-        from ep_session import cmd_session
-        from ep_stack import STACK_DEFINITIONS, detect_stack
-        from ep_sync import cmd_sync_skill
-        from ep_vcs import BaseGitProvider, GitHubProvider, GitLabProvider, LocalGitProvider, cmd_pr, cmd_vcs, get_git_provider
+except ImportError:
+    from ep_adopt import cmd_adopt  # type: ignore[import-not-found,no-redef]
+    from ep_ast import cmd_ast  # type: ignore[import-not-found,no-redef]
+    from ep_context import cmd_pack  # type: ignore[import-not-found,no-redef]
+    from ep_doctor import cmd_ci, cmd_doctor, cmd_skill, run_doctor  # type: ignore[import-not-found,no-redef]
+    from ep_hooks import cmd_hooks  # type: ignore[import-not-found,no-redef]
+    from ep_ops import cmd_codeowners, cmd_container, cmd_dora, cmd_finops, cmd_perf, cmd_slo, cmd_telemetry  # type: ignore[import-not-found,no-redef]
+    from ep_runner import cmd_graph, cmd_run, cmd_run_many  # type: ignore[import-not-found,no-redef]
+    from ep_scaffold import archive_change_surface, cmd_init, cmd_manifest, cmd_preflight, cmd_worktree, is_surface_unpopulated  # type: ignore[import-not-found,no-redef]
+    from ep_security import cmd_iac, cmd_license, cmd_policy, cmd_security  # type: ignore[import-not-found,no-redef]
+    from ep_session import cmd_session  # type: ignore[import-not-found,no-redef]
+    from ep_stack import STACK_DEFINITIONS, detect_stack  # type: ignore[import-not-found,no-redef]
+    from ep_sync import cmd_sync_skill  # type: ignore[import-not-found,no-redef]
+    from ep_vcs import BaseGitProvider, GitHubProvider, GitLabProvider, LocalGitProvider, cmd_pr, cmd_vcs, get_git_provider  # type: ignore[import-not-found,no-redef]
+
+def _resolve_change_surface(target_file: str) -> str:
+    needs_fallback = False
+    if not os.path.exists(target_file):
+        needs_fallback = True
+    elif target_file == "CHANGE_SURFACE.md" or os.path.basename(target_file) == "CHANGE_SURFACE.md":
+        try:
+            with open(target_file, "r", encoding="utf-8") as f:
+                c = f.read()
+            if is_surface_unpopulated(c):
+                needs_fallback = True
+        except Exception:
+            needs_fallback = True
+    if needs_fallback and os.path.exists("docs/changes"):
+        changes = sorted(
+            [os.path.join("docs/changes", f) for f in os.listdir("docs/changes") if f.endswith(".md")],
+            key=lambda p: (os.path.getmtime(p), p),
+        )
+        if changes:
+            return changes[-1]
+    return target_file
+
 
 # --- Subcommand: surface (Change Surface Validator & Blast-Radius Gate) ---
 def cmd_surface(args: argparse.Namespace) -> int:
     if args.action == "validate":
-        target_file = getattr(args, "output", None) or getattr(args, "surface_file", None) or args.file or "CHANGE_SURFACE.md"
+        target_file = _resolve_change_surface(getattr(args, "output", None) or getattr(args, "surface_file", None) or args.file or "CHANGE_SURFACE.md")
         if not os.path.exists(target_file):
             print(f"[ERROR] Change Surface file '{target_file}' not found.", file=sys.stderr)
             return 1
@@ -83,13 +88,7 @@ def cmd_surface(args: argparse.Namespace) -> int:
 
     elif args.action == "check-diff":
         base_branch = args.base or "origin/main"
-        target_file = getattr(args, "output", None) or getattr(args, "surface_file", None) or args.file or "CHANGE_SURFACE.md"
-
-        if not os.path.exists(target_file) or (target_file == "CHANGE_SURFACE.md" and is_surface_unpopulated(open(target_file, "r", encoding="utf-8").read())):
-            if os.path.exists("docs/changes"):
-                changes = sorted([os.path.join("docs/changes", f) for f in os.listdir("docs/changes") if f.endswith(".md")], key=lambda p: os.path.getmtime(p))
-                if changes:
-                    target_file = changes[-1]
+        target_file = _resolve_change_surface(getattr(args, "output", None) or getattr(args, "surface_file", None) or args.file or "CHANGE_SURFACE.md")
 
         if not os.path.exists(target_file):
             print(f"[ERROR] No Change Surface artifact found to verify against git diff.", file=sys.stderr)
@@ -298,93 +297,11 @@ def cmd_migration(args: argparse.Namespace) -> int:
     print(f"[OK] Expand/Contract Verified: {len(target_files)} migration files checked. 0 destructive operations.")
     return 0
 
-# --- Subcommand: graph (Native Mermaid Topology Generator) ---
-def cmd_graph(args: argparse.Namespace) -> int:
-    root_dir = args.root or "."
-
-    if getattr(args, "check_boundaries", False):
-        print("=== EP-OS Architectural Boundary Integrity Check ===")
-        violations = []
-        for cur_root, dirs, files in os.walk(root_dir):
-            dirs[:] = [d for d in dirs if d not in {"node_modules", ".git", ".nx", "dist", "build"} and not d.startswith(".")]
-            norm_cur = cur_root.replace("\\", "/")
-            is_domain = "/domain" in norm_cur or norm_cur.endswith("/domain")
-            for f in files:
-                if f.endswith((".ts", ".js", ".go", ".py", ".rs", ".php")):
-                    f_path = os.path.join(cur_root, f)
-                    try:
-                        with open(f_path, "r", encoding="utf-8", errors="ignore") as fh:
-                            fc = fh.read()
-                        if is_domain:
-                            if re.search(r"(from ['\"](typeorm|prisma|sequelize|gorm|sqlalchemy|django\.db)['\"]|import .*gorm|org\.hibernate)", fc):
-                                violations.append((f_path, "Domain layer imports ORM/persistence framework"))
-                        if "/libs/" in norm_cur or "/packages/" in norm_cur:
-                            if re.search(r"from ['\"].*(apps|services)/", fc):
-                                violations.append((f_path, "Library/shared package imports application or service code"))
-                    except Exception:
-                        pass
-        if violations:
-            print("[FAIL] Architectural Boundary Violations Detected!", file=sys.stderr)
-            for f_path, reason in violations:
-                print(f"  ❌ {f_path}: {reason}", file=sys.stderr)
-            return 1
-        print("[OK] Architectural Boundary Integrity Verified. Zero illegal imports detected.")
-        return 0
-
-    projects = []
-    for current_root, dirs, files in os.walk(root_dir):
-        dirs[:] = [d for d in dirs if d not in {"node_modules", ".git", ".nx", "dist", "build"} and not d.startswith(".")]
-        if "project.json" in files:
-            p_file = os.path.join(current_root, "project.json")
-            try:
-                with open(p_file, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    name = data.get("name", os.path.basename(current_root))
-                    tags = data.get("tags", [])
-                    profile = "Unknown"
-                    scope = "General"
-                    for t in tags:
-                        if t.startswith("profile:"):
-                            profile = t.split(":", 1)[1].upper()
-                        elif t.startswith("scope:"):
-                            scope = t.split(":", 1)[1]
-                    projects.append({
-                        "name": name,
-                        "path": current_root,
-                        "profile": profile,
-                        "scope": scope,
-                    })
-            except Exception:
-                pass
-
-    if args.format == "json":
-        print(json.dumps(projects, indent=2))
-        return 0
-
-    print("```mermaid\nflowchart TD\n    subgraph Enterprise Product Monorepo")
-    profiles = {"A": "Profile A (Backend & Core Services)", "B": "Profile B (Web Applications)", "C": "Profile C (Mobile Clients)", "D": "Profile D (Shared Contracts & Libs)"}
-    for prof_key, prof_label in profiles.items():
-        matching = [p for p in projects if p["profile"] == prof_key]
-        if matching:
-            print(f'        subgraph P_{prof_key}["{prof_label}"]')
-            for p in matching:
-                p_id = re.sub(r"[^a-zA-Z0-9_]", "_", p["name"])
-                print(f'            {p_id}["{p["name"]} ({p["scope"]})"]')
-            print("        end")
-
-    for d in [p for p in projects if p["profile"] == "D"]:
-        d_id = re.sub(r"[^a-zA-Z0-9_]", "_", d["name"])
-        for o in [p for p in projects if p["profile"] != "D"]:
-            o_id = re.sub(r"[^a-zA-Z0-9_]", "_", o["name"])
-            print(f"    {d_id} -.-> {o_id}")
-
-    print("    end\n```")
-    return 0
 
 # --- Subcommand: release & milestone (SemVer & Release Governance) ---
 def cmd_release(args: argparse.Namespace) -> int:
     action = args.action
-    version = getattr(args, "version", None)
+    version = getattr(args, "version", None) or getattr(args, "version_flag", None)
 
     if action == "create":
         if not version or not re.match(r"^v?\d+\.\d+\.\d+", version):
@@ -400,26 +317,55 @@ def cmd_release(args: argparse.Namespace) -> int:
         return 0
     elif action == "finalize":
         cur_branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, check=False, timeout=10).stdout.strip()
+        is_prod = getattr(args, "prod", False) or cur_branch == "prod"
+        version_label = version
         today_str = datetime.date.today().isoformat()
         rel_dir = "docs/releases"
         os.makedirs(rel_dir, exist_ok=True)
-        rel_file = os.path.join(rel_dir, f"RELEASE_{today_str}.md")
+        rel_filename = f"RELEASE_{version_label}.md" if version_label else f"RELEASE_{today_str}.md"
+        rel_file = os.path.join(rel_dir, rel_filename)
         changes_dir = "docs/changes"
         summaries = []
+
+        # Scope changes to files in docs/changes/ created since previous git tag
+        res_tag = subprocess.run(["git", "describe", "--tags", "--abbrev=0"], capture_output=True, text=True, check=False, timeout=10)
+        prev_tag = res_tag.stdout.strip() if res_tag.returncode == 0 else None
+
+        scoped_files = set()
+        if prev_tag:
+            res_diff = subprocess.run(["git", "diff", "--name-only", "--diff-filter=AM", f"{prev_tag}..HEAD", "--", changes_dir], capture_output=True, text=True, check=False, timeout=10)
+            if res_diff.returncode == 0:
+                for f in res_diff.stdout.splitlines():
+                    if f.strip().endswith(".md"):
+                        scoped_files.add(os.path.basename(f.strip()))
+            res_status = subprocess.run(["git", "status", "--porcelain", "--", changes_dir], capture_output=True, text=True, check=False, timeout=10)
+            if res_status.returncode == 0:
+                for line in res_status.stdout.splitlines():
+                    if len(line) >= 4:
+                        p = line[3:].strip()
+                        if " -> " in p:
+                            p = p.split(" -> ")[1].strip()
+                        if p.endswith(".md"):
+                            scoped_files.add(os.path.basename(p))
+
         if os.path.exists(changes_dir):
             for cf in sorted(os.listdir(changes_dir)):
                 if cf.endswith(".md"):
-                    with open(os.path.join(changes_dir, cf), "r", encoding="utf-8", errors="ignore") as fh:
-                        summaries.append(f"### {cf}\n\n" + fh.read())
+                    if not prev_tag or (scoped_files and cf in scoped_files):
+                        with open(os.path.join(changes_dir, cf), "r", encoding="utf-8", errors="ignore") as fh:
+                            summaries.append(f"### {cf}\n\n" + fh.read())
+
+        header_title = f"Production Release Notes: {version_label or today_str}" if is_prod else f"Release Notes: {version_label or today_str}"
         rel_content = (
-            f"# Production Release Notes: {today_str}\n\n- **Date**: `{today_str}`\n- **Branch**: `{cur_branch}`\n"
+            f"# {header_title}\n\n- **Date**: `{today_str}`\n- **Branch**: `{cur_branch}`\n"
+            f"- **Production**: `{is_prod}`\n"
             f"- **Change Surfaces Included**: `{len(summaries)}`\n\n## Change Summaries\n\n"
             + ("\n\n---\n\n".join(summaries) if summaries else "_No individual Change Surface files recorded._\n")
         )
         with open(rel_file, "w", encoding="utf-8") as fh:
             fh.write(rel_content)
         print(f"[OK] Generated release notes at '{rel_file}'.")
-        print(f"[OK] Finalized production release progression on branch '{cur_branch}'.")
+        print(f"[OK] Finalized release progression on branch '{cur_branch}'.")
         return 0
     return 0
 
@@ -552,6 +498,7 @@ def main():
     p_rel = subparsers.add_parser("release", help="Hybrid Dual-Tier SemVer and release management")
     p_rel.add_argument("action", choices=["create", "finalize"], help="Release action")
     p_rel.add_argument("version", nargs="?", default=None, help="Target release version")
+    p_rel.add_argument("--version", dest="version_flag", default=None, help="Target release version (alias)")
     p_rel.add_argument("--prod", action="store_true", help="Finalize production release")
 
     # milestone
@@ -762,9 +709,7 @@ def main():
         "verify": run_verify,
         "nc": lambda a: subprocess.run([sys.executable, os.path.join(SCRIPTS_DIR, "check-nc-items.py"), "--max-age", str(a.max_age)], timeout=30).returncode,
         "hooks": cmd_hooks, "security": cmd_security, "license": cmd_license, "adopt": cmd_adopt,
-        "telemetry": lambda a: (print("[OK] Telemetry: Traceparent headers conform to OpenTelemetry schema."), 0)[1],
-        "finops": lambda a: (print("[OK] FinOps: Resource quota limits verified across manifests."), 0)[1],
-        "policy": lambda a: (print("[OK] Policy: Zero policy violations detected across governance rules."), 0)[1],
+        "telemetry": cmd_telemetry, "finops": cmd_finops, "policy": cmd_policy,
         "sync-skill": cmd_sync_skill, "ast": cmd_ast, "run": cmd_run, "run-many": cmd_run_many,
         "iac": cmd_iac, "slo": cmd_slo, "codeowners": cmd_codeowners, "dora": cmd_dora,
         "perf": cmd_perf, "container": cmd_container, "pack": cmd_pack, "context": cmd_pack,

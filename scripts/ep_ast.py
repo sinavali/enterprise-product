@@ -95,8 +95,8 @@ STRUCTURAL_AST_RULES = [
         "path_filter": lambda p: "domain" in p.replace("\\", "/").split("/"),
     },
     {
-        "id": "RULE-1.7-AST-NON-UTC-CLOCK",
-        "dim": 1,
+        "id": "RULE-4.4-AST-NON-UTC-CLOCK",
+        "dim": 4,
         "severity": "blocking",
         "description": "Non-UTC clock or un-timezoned timestamp creation in persistence or domain; violates UTC storage convention.",
         "patterns": [
@@ -104,7 +104,7 @@ STRUCTURAL_AST_RULES = [
             ("python", "datetime.now()"),
             ("python", "datetime.today()"),
         ],
-        "path_filter": lambda p: not bool(re.search(r"(\.spec\.|\.test\.|_test|tests?[\\/])", p, re.IGNORECASE)),
+        "path_filter": lambda p: bool(re.search(r"(domain|persistence|models|entities)", p, re.IGNORECASE)) and not bool(re.search(r"(\.spec\.|\.test\.|_test|tests?[\\/])", p, re.IGNORECASE)),
     },
     {
         "id": "RULE-3.8-AST-TRANSACTIONAL-OUTBOX",

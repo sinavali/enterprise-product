@@ -5,7 +5,7 @@
   "sourceRoot": "libs/example-contracts/schemas",
   "tags": [
     "profile:d",
-    "scope:contracts",
+    "scope:shared",
     "lang:idl"
   ],
   "targets": {
