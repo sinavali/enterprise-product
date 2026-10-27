@@ -82,8 +82,8 @@ Every finding discovered during an audit must be categorized into one of three s
 - **Check 6.8 (Metric Cardinality Bounding)**: Metric labels/tags must have bounded, finite values. Unbounded identifiers (user IDs, email addresses, order IDs) in metric labels are strictly prohibited.
 
 ### Dimension 7: Contract & Schema Drift
-- **Check 7.1 (Schema Alignment)**: Code implementations must match OpenAPI / Protobuf schemas exactly.
-- **Check 7.2 (Backward Compatibility)**: No breaking changes to existing API schemas without a major SemVer bump and deprecation notice.
+- **Check 7.1 (Schema Alignment & Contract Boundaries)**: Code implementations must match OpenAPI / Protobuf schemas exactly. Direct cross-project relative imports bypassing published package contracts (`RULE-7.1-DIRECT-CROSS-PROJECT-IMPORT`) are strictly forbidden; inter-service boundaries must be crossed via shared contracts (e.g. `libs/core-contracts`).
+- **Check 7.2 (Backward Compatibility & Versioned Mutations)**: No breaking changes to existing API schemas without a major SemVer bump and deprecation notice. Direct unversioned deletion or dropping of schema fields (`RULE-7.2-UNVERSIONED-CONTRACT-MUTATION`) without deprecation markers violates contract stability.
 - **Check 7.3 (Client SDK Regeneration)**: Ensure generated client libraries are synchronized with updated schemas without manual drift.
 
 ### Dimension 8: Code Quality & Typing Strictness

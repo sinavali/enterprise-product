@@ -103,8 +103,9 @@ STRUCTURAL_AST_RULES = [
             ("typescript", "new Date()"),
             ("python", "datetime.now()"),
             ("python", "datetime.today()"),
+            ("go", "time.Now()"),
         ],
-        "path_filter": lambda p: bool(re.search(r"(domain|persistence|models|entities)", p, re.IGNORECASE)) and not bool(re.search(r"(\.spec\.|\.test\.|_test|tests?[\\/])", p, re.IGNORECASE)),
+        "path_filter": lambda p: bool(re.search(r"(domain|persistence|models|entities|repositories|db)", p, re.IGNORECASE)) and not bool(re.search(r"(\.spec\.|\.test\.|_test|tests?[\\/])", p, re.IGNORECASE)),
     },
     {
         "id": "RULE-3.8-AST-TRANSACTIONAL-OUTBOX",

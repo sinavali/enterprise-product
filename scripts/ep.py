@@ -104,6 +104,16 @@ def cmd_surface(args: argparse.Namespace) -> int:
 
         surface_text = code_surface_match.group(0)
         declared_paths = set(re.findall(r"[`']([a-zA-Z0-9_\-./\[\]]+)[`']", surface_text))
+        if os.path.exists("docs/changes"):
+            for arc in os.listdir("docs/changes"):
+                if arc.endswith(".md"):
+                    try:
+                        with open(os.path.join("docs/changes", arc), "r", encoding="utf-8") as af:
+                            m = re.search(r"## 3\.\s*Code Surface.*?(?=## 4\.\s*Test Surface|\Z)", af.read(), re.DOTALL | re.IGNORECASE)
+                            if m:
+                                declared_paths.update(re.findall(r"[`']([a-zA-Z0-9_\-./\[\]]+)[`']", m.group(0)))
+                    except Exception:
+                        pass
 
         try:
             if "..." in base_branch or base_branch in ("HEAD", "HEAD~1"):
