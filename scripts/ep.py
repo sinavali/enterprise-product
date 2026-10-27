@@ -33,7 +33,7 @@ if TYPE_CHECKING:
     from scripts.ep_hooks import cmd_hooks
     from scripts.ep_ops import cmd_codeowners, cmd_container, cmd_dora, cmd_perf, cmd_slo
     from scripts.ep_runner import cmd_run, cmd_run_many
-    from scripts.ep_scaffold import cmd_init, cmd_manifest, cmd_preflight, cmd_worktree
+    from scripts.ep_scaffold import archive_change_surface, cmd_init, cmd_manifest, cmd_preflight, cmd_worktree, is_surface_unpopulated
     from scripts.ep_security import cmd_iac, cmd_license, cmd_security
     from scripts.ep_session import cmd_session
     from scripts.ep_stack import STACK_DEFINITIONS, detect_stack
@@ -48,7 +48,7 @@ else:
         from scripts.ep_hooks import cmd_hooks
         from scripts.ep_ops import cmd_codeowners, cmd_container, cmd_dora, cmd_perf, cmd_slo
         from scripts.ep_runner import cmd_run, cmd_run_many
-        from scripts.ep_scaffold import cmd_init, cmd_manifest, cmd_preflight, cmd_worktree
+        from scripts.ep_scaffold import archive_change_surface, cmd_init, cmd_manifest, cmd_preflight, cmd_worktree, is_surface_unpopulated
         from scripts.ep_security import cmd_iac, cmd_license, cmd_security
         from scripts.ep_session import cmd_session
         from scripts.ep_stack import STACK_DEFINITIONS, detect_stack
@@ -62,18 +62,14 @@ else:
         from ep_hooks import cmd_hooks
         from ep_ops import cmd_codeowners, cmd_container, cmd_dora, cmd_perf, cmd_slo
         from ep_runner import cmd_run, cmd_run_many
-        from ep_scaffold import cmd_init, cmd_manifest, cmd_preflight, cmd_worktree
+        from ep_scaffold import archive_change_surface, cmd_init, cmd_manifest, cmd_preflight, cmd_worktree, is_surface_unpopulated
         from ep_security import cmd_iac, cmd_license, cmd_security
         from ep_session import cmd_session
         from ep_stack import STACK_DEFINITIONS, detect_stack
         from ep_sync import cmd_sync_skill
         from ep_vcs import BaseGitProvider, GitHubProvider, GitLabProvider, LocalGitProvider, cmd_pr, cmd_vcs, get_git_provider
 
-
-# ==============================================================================
-# SUBCOMMAND: surface (Change Surface Validator & Blast-Radius Gate)
-# ==============================================================================
-
+# --- Subcommand: surface (Change Surface Validator & Blast-Radius Gate) ---
 def cmd_surface(args: argparse.Namespace) -> int:
     if args.action == "validate":
         target_file = getattr(args, "output", None) or getattr(args, "surface_file", None) or args.file or "CHANGE_SURFACE.md"
@@ -89,7 +85,7 @@ def cmd_surface(args: argparse.Namespace) -> int:
         base_branch = args.base or "origin/main"
         target_file = getattr(args, "output", None) or getattr(args, "surface_file", None) or args.file or "CHANGE_SURFACE.md"
 
-        if not os.path.exists(target_file):
+        if not os.path.exists(target_file) or (target_file == "CHANGE_SURFACE.md" and is_surface_unpopulated(open(target_file, "r", encoding="utf-8").read())):
             if os.path.exists("docs/changes"):
                 changes = sorted([os.path.join("docs/changes", f) for f in os.listdir("docs/changes") if f.endswith(".md")], key=lambda p: os.path.getmtime(p))
                 if changes:
@@ -163,9 +159,25 @@ def cmd_surface(args: argparse.Namespace) -> int:
         print(f"[OK] Blast-Radius Clean: All {len(modified_files)} modified files are strictly within declared Change Surface.")
         return 0
 
+    elif args.action == "archive":
+        target_file = getattr(args, "output", None) or getattr(args, "surface_file", None) or args.file or "CHANGE_SURFACE.md"
+        changes_dir = getattr(args, "changes_dir", "docs/changes") or "docs/changes"
+        no_reset = getattr(args, "no_reset", False)
+        ok, arc_res = archive_change_surface(target_file, changes_dir=changes_dir, reset_root=not no_reset)
+        if not ok:
+            print(f"[WARN] Change Surface archival: {arc_res}")
+            return 0
+        print(f"[OK] Change Surface archived to '{arc_res}' and active surface reset.")
+        return 0
+
     elif args.action == "init":
         target_file = getattr(args, "output", None) or getattr(args, "surface_file", None) or args.file or "CHANGE_SURFACE.md"
         base_branch = getattr(args, "base", "origin/main") or "origin/main"
+
+        if os.path.exists(target_file):
+            ok_arc, arc_path = archive_change_surface(target_file, reset_root=False)
+            if ok_arc:
+                print(f"[INFO] Auto-archived previous populated surface to '{arc_path}'.")
 
         diff_target = base_branch if ("..." in base_branch or base_branch in ("HEAD", "HEAD~1")) else f"{base_branch}...HEAD"
         res_diff = subprocess.run(["git", "diff", "--name-only", diff_target], capture_output=True, text=True, check=False, timeout=30)
@@ -218,11 +230,7 @@ def cmd_surface(args: argparse.Namespace) -> int:
 
     return 0
 
-
-# ==============================================================================
-# SUBCOMMAND: migration (Expand/Contract Static DDL Scanner)
-# ==============================================================================
-
+# --- Subcommand: migration (Expand/Contract Static DDL Scanner) ---
 DESTRUCTIVE_DDL_PATTERNS = [
     (r"\bDROP\s+COLUMN\b", "DROP COLUMN detected. Breaking schema alteration violates Expand/Contract (Phase 1-4)."),
     (r"\bRENAME\s+COLUMN\b", "RENAME COLUMN detected. Instant rename breaks rolling deployments. Use dual-write Expand/Contract."),
@@ -290,11 +298,7 @@ def cmd_migration(args: argparse.Namespace) -> int:
     print(f"[OK] Expand/Contract Verified: {len(target_files)} migration files checked. 0 destructive operations.")
     return 0
 
-
-# ==============================================================================
-# SUBCOMMAND: graph (Native Mermaid Topology Generator)
-# ==============================================================================
-
+# --- Subcommand: graph (Native Mermaid Topology Generator) ---
 def cmd_graph(args: argparse.Namespace) -> int:
     root_dir = args.root or "."
 
@@ -377,11 +381,7 @@ def cmd_graph(args: argparse.Namespace) -> int:
     print("    end\n```")
     return 0
 
-
-# ==============================================================================
-# SUBCOMMAND: release & milestone (SemVer & Release Governance)
-# ==============================================================================
-
+# --- Subcommand: release & milestone (SemVer & Release Governance) ---
 def cmd_release(args: argparse.Namespace) -> int:
     action = args.action
     version = getattr(args, "version", None)
@@ -472,11 +472,7 @@ def cmd_milestone(args: argparse.Namespace) -> int:
         return 0
     return 0
 
-
-# ==============================================================================
-# MAIN DISPATCHER
-# ==============================================================================
-
+# --- Subcommand: main dispatcher ---
 def main():
     parser = argparse.ArgumentParser(
         prog="ep",
@@ -485,8 +481,8 @@ def main():
     subparsers = parser.add_subparsers(dest="subcommand", help="Operational subcommands")
 
     # surface
-    p_surface = subparsers.add_parser("surface", help="Change Surface validation and blast-radius bounding")
-    p_surface.add_argument("action", choices=["validate", "check-diff", "init"], help="Action to perform")
+    p_surface = subparsers.add_parser("surface", help="Change Surface validation, blast-radius bounding, and archival")
+    p_surface.add_argument("action", choices=["validate", "check-diff", "init", "archive"], help="Action to perform")
     p_surface.add_argument("file", nargs="?", default=None, help="Path to CHANGE_SURFACE markdown file")
     p_surface.add_argument("--surface-file", dest="surface_file", default=None, help="Path to CHANGE_SURFACE markdown file")
     p_surface.add_argument("--output", dest="output", default=None, help="Path to CHANGE_SURFACE markdown file (alias)")
@@ -494,6 +490,8 @@ def main():
     p_surface.add_argument("--strict", action="store_true", help="Disallow template placeholders")
     p_surface.add_argument("--scope", default=None, help="Project scope hint")
     p_surface.add_argument("--title", default=None, help="Change Surface title")
+    p_surface.add_argument("--changes-dir", default="docs/changes", help="Directory for archived Change Surfaces")
+    p_surface.add_argument("--no-reset", action="store_true", help="Do not reset active Change Surface to template")
 
     # migration
     p_mig = subparsers.add_parser("migration", help="Zero-Downtime Expand/Contract migration linter")

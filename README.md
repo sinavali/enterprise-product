@@ -4,7 +4,7 @@
 [![Release: v1.0.0 LTS](https://img.shields.io/badge/Release-v1.0.0%20LTS-blue.svg)](docs/releases/RELEASE_v1.0.0_LTS.md)
 [![Monorepo: Nx & DAG](https://img.shields.io/badge/Orchestrator-Nx%20%2F%20EP--Runner-143055.svg)](references/monorepo-nx-standard.md)
 [![Architecture: DDD + Hexagonal](https://img.shields.io/badge/Architecture-DDD%20%2B%20Hexagonal-8A2BE2.svg)](references/architectural-profiles.md)
-[![Tests: 164 Passing](https://img.shields.io/badge/Tests-164%20Passing-brightgreen.svg)](tests/)
+[![Tests: 170 Passing](https://img.shields.io/badge/Tests-170%20Passing-brightgreen.svg)](tests/)
 
 **The production-grade engineering operating system and mechanical gatekeeper for polyglot monorepos.**
 
@@ -101,6 +101,7 @@ All developer and agent operations are consolidated under the zero-dependency `e
 | **Change Surface** | `ep surface init` | Auto-detect modified projects and generate `CHANGE_SURFACE.md` |
 | | `ep surface validate <file>` | Validate syntax, frontmatter, and completeness of Change Surface |
 | | `ep surface check-diff` | Halt execution if changes exceed declared blast radius |
+| | `ep surface archive [<file>]` | Archive active surface to `docs/changes/` and reset to clean template |
 | **Task Execution** | `ep run <project>:<target>` | Execute target in topological DAG dependency order |
 | | `ep run-many --target=<target> --parallel` | Run target across affected projects concurrently |
 | **Context & Speed** | `ep pack [--surface] [--diff] [--files ...]` | Batch-pack codebase context into single bundle (anti-slowness) |

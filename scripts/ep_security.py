@@ -88,6 +88,9 @@ EXCLUDED_SCAN_DIRS = {
     ".nx",
     "coverage",
     "__pycache__",
+    "obj",
+    "bin",
+    "target",
 }
 
 COPYLEFT_LICENSES = {

@@ -7,6 +7,7 @@ and environment preflight capability verification.
 """
 
 import argparse
+import datetime
 import json
 import os
 import re
@@ -289,3 +290,164 @@ def cmd_preflight(args: argparse.Namespace) -> int:
 
     print("\n[OK] Preflight Verified: All required agent execution capabilities are granted.")
     return 0
+
+
+CLEAN_SURFACE_TEMPLATE = """---
+title: "Change Surface: [Short Descriptive Title]"
+author: "[Author or Agent ID]"
+created_date: "{date}"
+target_branch: "main"
+risk_level: "LOW"                    # LOW | MEDIUM | HIGH | CRITICAL
+affected_projects:
+  - "services/core"
+---
+
+# Change Surface: [Feature or Task Title]
+
+## 1. Intent & Business Rationale
+[Provide a clear, unambiguous statement of why this change is needed, what problem it solves, and the expected business outcome.]
+
+## 2. Affected Monorepo Projects & Profiles
+| Project Path | Architectural Profile | Responsibility in this Change |
+|---|---|---|
+| `services/core` | Profile A (DDD/Hexagonal) | Target project |
+
+## 3. Code Surface (Targeted Symbols & Files)
+Declare the exact files and symbols that will be modified or created. Modifying files outside this surface requires updating this document.
+
+### Added Files
+- `services/core/src/index.ts`
+
+### Modified Files
+- `services/core/src/service.ts`
+
+## 4. Test Surface
+Every code change must have a corresponding test surface. Happy-path-only tests are prohibited.
+
+### Unit & Domain Tests
+- `services/core/tests/unit/service.spec.ts`
+
+### Integration Tests (Real Ephemeral Containers)
+- `services/core/tests/integration/service.test.ts`
+
+### Failure & Resilience Tests
+- `services/core/tests/integration/resilience.test.ts`
+
+### Concurrency Tests
+- `services/core/tests/integration/concurrency.test.ts`
+
+## 5. Invariants & Non-Negotiables Preserved
+- [ ] Tier 1: Pure domain logic remains 100% free of framework or ORM imports.
+- [ ] Tier 1: Real container integration tests (no engine-substitution emulators like SQLite for Postgres).
+- [ ] Tier 1: All stored and wire timestamps use UTC ISO-8601 (`Z`).
+- [ ] Tier 1: Directory nesting depth does not exceed 6 levels from project root.
+- [ ] Tier 1: Database migrations follow Expand/Contract pattern for zero-downtime rollout.
+- [ ] Tier 2: Files respect size ceilings (\\le 800 lines hard, \\le 400 lines soft); no micro-file sprawl.
+- [ ] Tier 2: Domain test coverage maintains \\ge 95% line & branch coverage; adapters \\ge 80%.
+- [ ] Tier 2: Transactional outbox pattern used for domain events published to brokers.
+- [ ] Tier 2: Backward compatibility of existing API contracts preserved.
+
+## 6. Risk Matrix & Rollback Strategy
+| Risk Description | Probability | Impact | Mitigation Strategy |
+|---|---|---|---|
+| Potential regression in callers | Low | Low | Comprehensive automated regression test suite |
+
+### Rollback Strategy
+Revert commits via standard git rollback or branch reset.
+"""
+
+
+def get_clean_surface_template(date_str: Optional[str] = None) -> str:
+    d = date_str or datetime.date.today().isoformat()
+    return CLEAN_SURFACE_TEMPLATE.format(date=d)
+
+
+def is_surface_unpopulated(content: str) -> bool:
+    """Returns True if the content is an unpopulated baseline template."""
+    if not content or not content.strip():
+        return True
+    placeholder_tokens = [
+        "[Short Descriptive Title]",
+        "[Feature or Task Title]",
+        "[Author or Agent ID]",
+        "[Provide a clear, unambiguous statement",
+    ]
+    has_placeholder = any(token in content for token in placeholder_tokens)
+    has_date_placeholder = "YYYY-MM-DD" in content
+    return has_placeholder or has_date_placeholder
+
+
+def archive_change_surface(
+    surface_file: str = "CHANGE_SURFACE.md",
+    changes_dir: str = "docs/changes",
+    reset_root: bool = True,
+) -> Tuple[bool, str]:
+    """
+    Archives a populated Change Surface to docs/changes/YYYY-MM-DD-<slug>.md
+    and resets the active surface to a clean baseline template.
+    """
+    if not os.path.exists(surface_file):
+        return False, f"Change Surface file '{surface_file}' does not exist."
+
+    try:
+        with open(surface_file, "r", encoding="utf-8") as f:
+            content = f.read()
+    except Exception as e:
+        return False, f"Failed to read Change Surface file '{surface_file}': {e}"
+
+    if not content.strip():
+        return False, f"Change Surface file '{surface_file}' is empty."
+
+    if is_surface_unpopulated(content):
+        return False, "Active Change Surface is an unpopulated baseline template. Skipping archival."
+
+    # Extract title
+    title_match = re.search(r"^title:\s*[\"']?(.*?)[\"']?\s*$", content, re.MULTILINE)
+    if title_match:
+        raw_title = title_match.group(1).strip()
+    else:
+        h1_match = re.search(r"^#\s*(.*?)$", content, re.MULTILINE)
+        raw_title = h1_match.group(1).strip() if h1_match else "change-surface"
+
+    clean_title = re.sub(r"^Change Surface:\s*", "", raw_title, flags=re.IGNORECASE).strip()
+    slug = re.sub(r"[^a-z0-9]+", "-", clean_title.lower()).strip("-")
+    if len(slug) > 60:
+        slug = slug[:60].rstrip("-")
+    if not slug:
+        slug = "task-surface"
+
+    # Extract date
+    date_match = re.search(r"^created_date:\s*[\"']?(\d{4}[-/]\d{2}[-/]\d{2})[\"']?", content, re.MULTILINE)
+    if date_match:
+        created_date = date_match.group(1).replace("/", "-")
+    else:
+        created_date = datetime.date.today().isoformat()
+
+    os.makedirs(changes_dir, exist_ok=True)
+    target_path = os.path.join(changes_dir, f"{created_date}-{slug}.md")
+
+    # Handle collision
+    if os.path.exists(target_path) and os.path.abspath(target_path) != os.path.abspath(surface_file):
+        try:
+            with open(target_path, "r", encoding="utf-8") as f_ex:
+                if f_ex.read().strip() == content.strip():
+                    pass
+                else:
+                    counter = 1
+                    while os.path.exists(os.path.join(changes_dir, f"{created_date}-{slug}-{counter}.md")):
+                        counter += 1
+                    target_path = os.path.join(changes_dir, f"{created_date}-{slug}-{counter}.md")
+        except Exception:
+            pass
+
+    # Atomically write archive
+    if os.path.abspath(target_path) != os.path.abspath(surface_file):
+        atomic_write(target_path, content)
+
+    # Reset root file to clean template if requested
+    if reset_root and os.path.abspath(surface_file) != os.path.abspath(target_path):
+        clean_template = get_clean_surface_template()
+        atomic_write(surface_file, clean_template)
+
+    return True, target_path
+

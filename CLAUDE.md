@@ -41,7 +41,7 @@ These rules cannot be overridden by any subproject manifest, human prompt shortc
 2. **Pure Domain Logic (DDD / Hexagonal)**: Domain entities and use cases must have zero imports of persistence frameworks (ORM, SQL, Prisma, TypeORM, SQLAlchemy, GORM) or UI libraries.
 3. **Ephemeral Real Containers for Datastores**: All database integration tests must run against real disposable containers (resolved intelligently via `ep container detect`, preferring rootless Podman with Docker fallback). In-memory SQL emulators (e.g. SQLite for PostgreSQL) are strictly banned.
 4. **UTC Storage Convention**: All datastore timestamps, network contracts, and internal clocks must store and exchange UTC ISO-8601 timestamps.
-5. **Pre-Implementation Change Surface**: Every modification must have an approved, mechanically validated Change Surface (`CHANGE_SURFACE.md`). Touching files outside the declared surface is blocked by `ep surface check-diff`.
+5. **Pre-Implementation Change Surface**: Every modification must have an approved, mechanically validated Change Surface (`CHANGE_SURFACE.md`). Touching files outside the declared surface is blocked by `ep surface check-diff`. Upon task completion, active surfaces are mechanically archived to `docs/changes/YYYY-MM-DD-<slug>.md` via `ep surface archive` and the root file is reset to template.
 6. **Anti-Sprawl Hygiene (Rule 2.6)**:
    - Hard file ceiling: **$\le 800$ lines** (soft target $\le 400$ lines).
    - Maximum directory depth: **$\le 6$ levels**.
@@ -75,7 +75,7 @@ When executing tasks, follow these operational velocity rules:
 | `implement` | TDD implementation bounded to Change Surface (pack context in 1 turn) | `ep pack --surface` && `ep surface check-diff` && `ep run <project>:test` |
 | `audit` | Execute 10-Dimension Enterprise Audit on diff | `ep audit --diff origin/main` |
 | `verify` | Parallel mechanical compliance suite | `ep verify` && `ep graph --check-boundaries` |
-| `pr-audit` | 2-Pass PR Self-Audit: Pass 1 audit -> fixes -> Pass 2 verify | `gh pr merge --squash` (or `ep pr create-prod`) |
+| `pr-audit` | 2-Pass PR Self-Audit: Pass 1 audit -> fixes -> Pass 2 verify -> archive surface | `ep surface archive` && `gh pr merge --squash` (or `ep pr create-prod`) |
 | `session` | Save / resume checkpoint state across agent sessions | `ep session save` / `ep session resume` |
 | `sync` | Validate multi-tier branch alignment (`main`, `test`, `stage`, `prod`) | `ep vcs sync-check` |
 | `release` | Orchestrate SemVer bumps and signed release tags | `ep release create` / `ep release finalize` |

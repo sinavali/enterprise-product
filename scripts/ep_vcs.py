@@ -9,7 +9,10 @@ import os
 import shutil
 import subprocess
 import sys
-from typing import List, Optional, Tuple
+from typing import TYPE_CHECKING, List, Optional, Tuple
+
+if TYPE_CHECKING:
+    from scripts.ep_scaffold import archive_change_surface
 
 
 class BaseGitProvider:
@@ -199,6 +202,16 @@ def cmd_pr(args: argparse.Namespace) -> int:
     provider = get_git_provider()
 
     if action == "create-prod":
+        surface_file = getattr(args, "surface_file", "CHANGE_SURFACE.md") or "CHANGE_SURFACE.md"
+        if os.path.exists(surface_file):
+            try:
+                from scripts.ep_scaffold import archive_change_surface
+            except ImportError:
+                from ep_scaffold import archive_change_surface  # type: ignore[import-not-found,no-redef]
+            ok_arc, arc_res = archive_change_surface(surface_file, reset_root=True)
+            if ok_arc:
+                print(f"[OK] Change Surface auto-archived to '{arc_res}' prior to production PR.")
+
         head = args.head or provider.get_current_branch()
         title = args.title or f"Release Candidate: {head}"
         body = args.body or "Automated release candidate prepared under EP-OS protocol."

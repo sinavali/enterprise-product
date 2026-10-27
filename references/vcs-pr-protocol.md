@@ -121,6 +121,7 @@ Before opening the PR:
    - No open `NEED_CLARIFICATION` item in the repo is $\ge 14$ days old.
 
 ### Step 4: Merge Decision, Protected Promotion & Production Gate
+- **Pre-Merge Archival**: Run `ep surface archive` before final PR merge or prod promotion to archive active `CHANGE_SURFACE.md` into `docs/changes/YYYY-MM-DD-<slug>.md` and reset root `CHANGE_SURFACE.md` to baseline template.
 - **Scenario A: Feature PR targeting `main` (0 Blocking Defects & CI Green)**:
   - If repo permissions permit, the agent executes automated squash merge:
     ```bash
