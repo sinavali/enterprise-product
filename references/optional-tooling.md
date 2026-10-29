@@ -28,17 +28,12 @@ Every external tool supported by EP-OS conforms to these invariants:
   - **macOS**: `brew install podman && podman machine init && podman machine start`.
   - **Windows (Recommended)**: Inside WSL2 (`sudo apt install podman`) or host `winget install RedHat.Podman-Desktop`.
 
-### 2.1 Load & Stress Testing (`k6`)
-- **Binary**: `k6`
+### 2.1 Load & Stress Testing (`k6` & `Locust`)
+- **Binaries**: `k6` (Go-based high-throughput engine) or `locust` (Python-based distributed load tester).
 - **Purpose**: High-throughput load, stress, spike, and soak testing of HTTP, gRPC, and WebSocket APIs.
-- **CLI Wrapper**: `ep perf [--script <path>] [--vus <count>] [--duration <time>]`
-- **Scaffolding Template**: `templates/perf-test.k6.js`
-- **Fallback Behavior**:
-  ```bash
-  [INFO] 'k6' binary not found in PATH.
-         Install k6: https://grafana.com/docs/k6/latest/set-up/install-k6/
-         Example: brew install k6 / sudo apt install k6
-  ```
+- **CLI Wrapper**: `ep perf [--tool k6|locust] [--script <path>] [--vus <count>] [--duration <time>]`
+- **Scaffolding Templates**: `templates/perf-test.k6.js` and `templates/perf-test.locust.py`
+- **Fallback Behavior**: Automatically falls back to OCI container execution (`grafana/k6:latest` or `locustio/locust:latest`) via `ep container detect`.
 
 ### 2.2 Telemetry Pipeline & Routing (`OpenTelemetry Collector`)
 - **Binary**: `otelcol` / `otelcol-contrib` (or container image `otel/opentelemetry-collector-contrib`)
@@ -60,10 +55,22 @@ Every external tool supported by EP-OS conforms to these invariants:
 - **Policy Directory**: `policy/*.rego`
 - **Fallback Behavior**: Validates internal static policies via `ep iac verify` if Conftest is not installed.
 
-### 2.5 Chaos Engineering (`Chaos Mesh` / `LitmusChaos`)
-- **Specification**: Pure declarative Kubernetes Custom Resource Definitions (CRDs) or ephemeral failure scripts.
+### 2.5 Chaos Engineering (`Chaos Mesh` / `LitmusChaos` / `ep chaos`)
+- **Purpose**: Deliberate fault injection, steady-state resilience verification, and game-day drills.
+- **CLI Dispatcher**: `ep chaos [scaffold|verify|run] [--file <path>] [--dry-run]`
 - **Template**: `templates/CHAOS_EXPERIMENT.template.md`
-- **Execution**: Verified via structural YAML/schema validation during CI; executed during scheduled Game Days.
+- **Execution**: Verified via structural schema validation during CI; simulated via `--dry-run` or executed during scheduled Game Days.
+
+### 2.6 Contract Testing (`ep contract`)
+- **Purpose**: Validates OpenAPI 3.x / Protobuf / AsyncAPI schemas, health probes, and checks for breaking contract mutations.
+- **CLI Dispatcher**: `ep contract verify [--dir schemas] [--file <path>]`
+- **Template**: `templates/openapi-contract.template.yaml`
+- **Fallback Behavior**: Zero-dependency static schema verification without external npm/pip dependencies.
+
+### 2.7 Software Bill of Materials & Provenance (`ep sbom`)
+- **Purpose**: Scans monorepo dependencies across polyglot manifests (`package.json`, `Cargo.toml`, `requirements.txt`, `go.mod`) and generates/verifies cryptographic SBOMs.
+- **CLI Dispatcher**: `ep sbom [generate|verify] [--format cyclonedx|spdx] [--output sbom.json]`
+- **Standard**: Conforms to CycloneDX 1.5 and SPDX 2.3 specifications.
 
 ---
 

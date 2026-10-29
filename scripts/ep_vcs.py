@@ -9,7 +9,10 @@ import os
 import shutil
 import subprocess
 import sys
-from typing import List, Optional, Tuple
+from typing import TYPE_CHECKING, List, Optional, Tuple
+
+if TYPE_CHECKING:
+    from scripts.ep_scaffold import archive_change_surface
 
 
 class BaseGitProvider:
@@ -27,7 +30,7 @@ class BaseGitProvider:
         except Exception:
             return ""
 
-    def sync_check(self, base_branch: str = "main", branches: Optional[List[str]] = None) -> Tuple[bool, List[str]]:
+    def sync_check(self, base_branch: str = "main", branches: Optional[List[str]] = None, root_dir: str = ".") -> Tuple[bool, List[str]]:
         if not branches:
             branches = ["test", "stage", "prod"]
         issues = []
@@ -35,7 +38,7 @@ class BaseGitProvider:
         # Verify base branch exists locally or remotely (DEFECT-05)
         resolved_base = None
         for cand in [base_branch, f"origin/{base_branch}"]:
-            res = subprocess.run(["git", "rev-parse", "--verify", cand], capture_output=True, text=True, check=False, timeout=30)
+            res = subprocess.run(["git", "rev-parse", "--verify", cand], cwd=root_dir, capture_output=True, text=True, check=False, timeout=30)
             if res.returncode == 0:
                 resolved_base = cand
                 break
@@ -46,14 +49,14 @@ class BaseGitProvider:
         for b in branches:
             resolved_b = None
             for cand in [b, f"origin/{b}"]:
-                res_b = subprocess.run(["git", "rev-parse", "--verify", cand], capture_output=True, text=True, check=False, timeout=30)
+                res_b = subprocess.run(["git", "rev-parse", "--verify", cand], cwd=root_dir, capture_output=True, text=True, check=False, timeout=30)
                 if res_b.returncode == 0:
                     resolved_b = cand
                     break
             if not resolved_b:
                 continue
 
-            res_ahead = subprocess.run(["git", "rev-list", f"{resolved_base}..{resolved_b}"], capture_output=True, text=True, check=False, timeout=30)
+            res_ahead = subprocess.run(["git", "rev-list", f"{resolved_base}..{resolved_b}"], cwd=root_dir, capture_output=True, text=True, check=False, timeout=30)
             ahead_commits = [c.strip() for c in res_ahead.stdout.splitlines() if c.strip()]
             if ahead_commits:
                 issues.append(f"Branch '{b}' ({resolved_b}) has {len(ahead_commits)} unmerged commits not reachable from '{base_branch}'. Rogue commits violate promotion pipeline!")
@@ -199,6 +202,16 @@ def cmd_pr(args: argparse.Namespace) -> int:
     provider = get_git_provider()
 
     if action == "create-prod":
+        surface_file = getattr(args, "surface_file", "CHANGE_SURFACE.md") or "CHANGE_SURFACE.md"
+        if os.path.exists(surface_file):
+            try:
+                from scripts.ep_scaffold import archive_change_surface
+            except ImportError:
+                from ep_scaffold import archive_change_surface  # type: ignore[import-not-found,no-redef]
+            ok_arc, arc_res = archive_change_surface(surface_file, reset_root=True)
+            if ok_arc:
+                print(f"[OK] Change Surface auto-archived to '{arc_res}' prior to production PR.")
+
         head = args.head or provider.get_current_branch()
         title = args.title or f"Release Candidate: {head}"
         body = args.body or "Automated release candidate prepared under EP-OS protocol."

@@ -41,7 +41,7 @@ These rules cannot be overridden by any subproject manifest, human prompt shortc
 2. **Pure Domain Logic (DDD / Hexagonal)**: Domain entities and use cases must have zero imports of persistence frameworks (ORM, SQL, Prisma, TypeORM, SQLAlchemy, GORM) or UI libraries.
 3. **Ephemeral Real Containers for Datastores**: All database integration tests must run against real disposable containers (resolved intelligently via `ep container detect`, preferring rootless Podman with Docker fallback). In-memory SQL emulators (e.g. SQLite for PostgreSQL) are strictly banned.
 4. **UTC Storage Convention**: All datastore timestamps, network contracts, and internal clocks must store and exchange UTC ISO-8601 timestamps.
-5. **Pre-Implementation Change Surface**: Every modification must have an approved, mechanically validated Change Surface (`CHANGE_SURFACE.md`). Touching files outside the declared surface is blocked by `ep surface check-diff`.
+5. **Pre-Implementation Change Surface**: Every modification must have an approved, mechanically validated Change Surface (`CHANGE_SURFACE.md`). Touching files outside the declared surface is blocked by `ep surface check-diff`. Upon task completion, active surfaces are mechanically archived to `docs/changes/YYYY-MM-DD-<slug>.md` via `ep surface archive` and the root file is reset to template.
 6. **Anti-Sprawl Hygiene (Rule 2.6)**:
    - Hard file ceiling: **$\le 800$ lines** (soft target $\le 400$ lines).
    - Maximum directory depth: **$\le 6$ levels**.
@@ -58,6 +58,8 @@ These rules cannot be overridden by any subproject manifest, human prompt shortc
 When executing tasks, follow these operational velocity rules:
 
 - **Zero-Serialization File Ingestion Mandate (Anti-One-by-One Slowness)**: AI agents are **strictly forbidden from reading codebase files sequentially one-by-one across multiple conversational turns**. When planning, investigating, or modifying code, agents MUST run `ep pack` (e.g. `python3 scripts/ep.py pack --surface` or compound `tail -n +1 <files...>`) in a single bash command to inject all target files into context in a single turn before editing.
+- **Fast-Path Sub-Second Verification (`--diff` / `--surface`)**: During inner development loops, agents MUST use fast-path flags (e.g. `python3 scripts/ep.py verify --diff` or `python3 scripts/ep.py quality --diff`) to verify only touched files rather than re-running full monorepo re-audits.
+- **Persistent Analysis Caching**: Static analysis and AST grep scans automatically cache clean file hashes in `.ep/cache/ast_cache.json`. Repeated scans on unchanged files execute in milliseconds.
 - **Compound Shell Commands**: Always combine related shell commands using `&&` or pipelines in a single invocation. Never serialize sequential roundtrips.
 - **Batch Independent Reads**: If reading non-repo files, emit multiple parallel tool calls in the same turn.
 - **Context Hygiene**: Redirect noisy build, test, and dependency install output to temporary logs (`/tmp/*.log`). Use `/compact` when conversation history grows long.
@@ -70,17 +72,18 @@ When executing tasks, follow these operational velocity rules:
 | Mode | Trigger / Purpose | Primary Tooling |
 |---|---|---|
 | `plan` | Analyze requirements, map blast radius, create Change Surface | `ep surface init` && `ep surface validate` |
-| `investigate` | Root-cause analysis, reproduce bug in real container | `ep ast scan` && author red tests |
+| `investigate` | Root-cause analysis, reproduce bug in real container | `ep ast scan --diff` && author red tests |
 | `scaffold` | Initialize compliant subprojects and Nx contracts | `ep init <name> --profile [A\|B\|C\|D] --lang <stack>` |
-| `implement` | TDD implementation bounded to Change Surface (pack context in 1 turn) | `ep pack --surface` && `ep surface check-diff` && `ep run <project>:test` |
+| `implement` | TDD implementation bounded to Change Surface (pack context in 1 turn) | `ep pack --surface --summary` && `ep quality --diff` && `ep run <project>:test` |
 | `audit` | Execute 10-Dimension Enterprise Audit on diff | `ep audit --diff origin/main` |
-| `verify` | Parallel mechanical compliance suite | `ep verify` && `ep graph --check-boundaries` |
-| `pr-audit` | 2-Pass PR Self-Audit: Pass 1 audit -> fixes -> Pass 2 verify | `gh pr merge --squash` (or `ep pr create-prod`) |
+| `verify` | 12-Step unified mechanical compliance suite (Fast-path: `--diff`) | `ep verify [--diff]` (Gates: Nx, AGENT, NC, Migration, Secrets, Surface, Boundaries, License, IaC, SLO, Quality, Audit) |
+| `pr-audit` | 2-Pass PR Self-Audit: Pass 1 audit -> fixes -> Pass 2 verify -> archive surface | `ep surface archive` && `gh pr merge --squash` (or `ep pr create-prod`) |
 | `session` | Save / resume checkpoint state across agent sessions | `ep session save` / `ep session resume` |
 | `sync` | Validate multi-tier branch alignment (`main`, `test`, `stage`, `prod`) | `ep vcs sync-check` |
 | `release` | Orchestrate SemVer bumps and signed release tags | `ep release create` / `ep release finalize` |
 | `adopt` | Brownfield monorepo onboarding and baseline ratcheting | `ep adopt --apply` |
-| `ops` | Operational readiness, container resolver, SLO validation, code ownership, DORA & perf | `ep container`, `ep slo`, `ep codeowners`, `ep dora`, `ep iac`, `ep perf` |
+| `ops` | Operational readiness, container resolver, SLO validation, code ownership, DORA & perf | `ep container`, `ep slo`, `ep codeowners`, `ep dora`, `ep iac`, `ep perf --tool [k6\|locust]` |
+| `tooling` | Chaos drills, API contract testing, and SBOM supply-chain validation | `ep chaos [scaffold\|verify]`, `ep contract verify`, `ep sbom [generate\|verify]` |
 | `doctor` | Operating system prerequisite diagnostic & autonomous self-healing | `ep doctor [--heal]` |
 | `skill` | Generate compact product-specific tailored skill manifest | `ep skill generate` |
 

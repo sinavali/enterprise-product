@@ -57,6 +57,17 @@ The script `scripts/validate-change-surface.py` verifies:
 - Prevention of unconstrained wildcards (`*`) without path scoping.
 - Resolves files at root (`CHANGE_SURFACE.md`) or within `docs/changes/`.
 
+### 2.3 Mechanical Archival & Template Reset Lifecycle
+To prevent `CHANGE_SURFACE.md` from accumulating stale modifications across branches and PRs:
+1. **Mechanical Archival (`ep surface archive`)**:
+   - Parses the active Change Surface, extracts its ISO date and title slug.
+   - Saves a persistent versioned snapshot at `docs/changes/YYYY-MM-DD-<slug>.md`.
+   - Atomically resets the root `CHANGE_SURFACE.md` to a clean baseline template (`CLEAN_SURFACE_TEMPLATE`).
+2. **Auto-Archiving on New Initialization (`ep surface init`)**:
+   - When initializing a new Change Surface via `ep surface init`, any existing populated surface is automatically detected and archived into `docs/changes/` before the new surface is scaffolded.
+3. **Pre-Prod Promotion Gate (`ep pr create-prod`)**:
+   - Before opening a production promotion PR, `ep pr create-prod` automatically triggers `ep surface archive` to ensure zero stale active change surfaces reach production.
+
 ---
 
 ## 3. Architecture Decision Records (ADRs)

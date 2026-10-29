@@ -182,6 +182,18 @@ def validate_change_surface(file_path: str, strict: bool = False) -> Tuple[bool,
     return is_valid, errors
 
 
+def is_surface_unpopulated(content: str) -> bool:
+    if not content or not content.strip():
+        return True
+    placeholder_tokens = [
+        "[Short Descriptive Title]",
+        "[Feature or Task Title]",
+        "[Author or Agent ID]",
+        "[Provide a clear, unambiguous statement",
+    ]
+    return any(token in content for token in placeholder_tokens) or "YYYY-MM-DD" in content
+
+
 def main():
     parser = argparse.ArgumentParser(description="Validate enterprise CHANGE_SURFACE artifact.")
     parser.add_argument("file", nargs="?", default="CHANGE_SURFACE.md", help="Path to CHANGE_SURFACE markdown file")
@@ -190,10 +202,22 @@ def main():
     
     args = parser.parse_args()
     target_file = args.file
-    if target_file == "CHANGE_SURFACE.md" and not os.path.exists("CHANGE_SURFACE.md"):
-        if os.path.isdir("docs/changes"):
+    if target_file == "CHANGE_SURFACE.md" or os.path.basename(target_file) == "CHANGE_SURFACE.md":
+        needs_fallback = False
+        if not os.path.exists(target_file):
+            needs_fallback = True
+        else:
+            try:
+                with open(target_file, "r", encoding="utf-8") as f:
+                    content_check = f.read()
+                if is_surface_unpopulated(content_check):
+                    needs_fallback = True
+            except Exception:
+                needs_fallback = True
+        if needs_fallback and os.path.isdir("docs/changes"):
             change_files = sorted(
                 [os.path.join("docs/changes", f) for f in os.listdir("docs/changes") if f.endswith(".md")],
+                key=lambda p: (os.path.getmtime(p), p),
                 reverse=True,
             )
             if change_files:

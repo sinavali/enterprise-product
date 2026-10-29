@@ -430,7 +430,7 @@ slos:
     # --------------------------------------------------------------------------
     def test_defect_27_utc_and_outbox_rules(self):
         rule_ids = {r["id"] for r in STRUCTURAL_AST_RULES}
-        self.assertIn("RULE-1.7-AST-NON-UTC-CLOCK", rule_ids)
+        self.assertIn("RULE-4.4-AST-NON-UTC-CLOCK", rule_ids)
         self.assertIn("RULE-3.8-AST-TRANSACTIONAL-OUTBOX", rule_ids)
 
         heuristic_ids = {h["id"] for h in audit_runner.HEURISTIC_RULES}

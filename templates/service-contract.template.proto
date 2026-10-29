@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package {{SERVICE_PACKAGE}}.v1;
+
+option go_package = "github.com/enterprise/{{SERVICE_NAME}}/v1;v1";
+option java_multiple_files = true;
+option java_package = "com.enterprise.{{SERVICE_PACKAGE}}.v1";
+
+// Health check liveness and readiness probe
+message HealthCheckRequest {
+  string service = 1;
+}
+
+message HealthCheckResponse {
+  enum ServingStatus {
+    UNKNOWN = 0;
+    SERVING = 1;
+    NOT_SERVING = 2;
+  }
+  ServingStatus status = 1;
+}
+
+// Resource entity and mutating RPCs with explicit idempotency key
+message Resource {
+  string id = 1;
+  string name = 2;
+  string created_at_utc = 3;
+}
+
+message CreateResourceRequest {
+  string idempotency_key = 1;
+  string name = 2;
+}
+
+message CreateResourceResponse {
+  Resource resource = 1;
+}
+
+message GetResourceRequest {
+  string id = 1;
+}
+
+service {{SERVICE_CLASS}}Service {
+  rpc CheckHealth(HealthCheckRequest) returns (HealthCheckResponse);
+  rpc CreateResource(CreateResourceRequest) returns (CreateResourceResponse);
+  rpc GetResource(GetResourceRequest) returns (Resource);
+}

@@ -25,15 +25,18 @@ if TYPE_CHECKING:
     from scripts.ep_hooks import find_git_hooks_dir, install_hooks
     from scripts.ep_ops import atomic_write, resolve_container_engine
     from scripts.ep_runner import discover_projects
+    from scripts.ep_vcs import get_git_provider
 else:
     try:
         from scripts.ep_hooks import find_git_hooks_dir, install_hooks
         from scripts.ep_ops import atomic_write, resolve_container_engine
         from scripts.ep_runner import discover_projects
+        from scripts.ep_vcs import get_git_provider
     except ImportError:
         from ep_hooks import find_git_hooks_dir, install_hooks
         from ep_ops import atomic_write, resolve_container_engine
         from ep_runner import discover_projects
+        from ep_vcs import get_git_provider
 
 
 PROFILE_DESCRIPTIONS = {
@@ -99,6 +102,14 @@ def check_vcs_branches(root_dir: str = ".") -> Tuple[bool, str]:
             missing.append(b)
     if missing:
         return False, f"Missing multi-tier VCS promotion branches: {', '.join(missing)}"
+
+    try:
+        ok, issues = get_git_provider().sync_check(base_branch="main", root_dir=root_dir)
+        if not ok:
+            return False, f"VCS branch drift detected: {'; '.join(issues)}"
+    except Exception as e:
+        return False, f"VCS sync check failed: {e}"
+
     return True, "Multi-tier VCS topology fully configured (main, test, stage, prod)."
 
 
