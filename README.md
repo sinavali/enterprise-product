@@ -4,7 +4,7 @@
 [![Release: v1.0.0 LTS](https://img.shields.io/badge/Release-v1.0.0%20LTS-blue.svg)](docs/releases/RELEASE_v1.0.0_LTS.md)
 [![Monorepo: Nx & DAG](https://img.shields.io/badge/Orchestrator-Nx%20%2F%20EP--Runner-143055.svg)](references/monorepo-nx-standard.md)
 [![Architecture: DDD + Hexagonal](https://img.shields.io/badge/Architecture-DDD%20%2B%20Hexagonal-8A2BE2.svg)](references/architectural-profiles.md)
-[![Tests: 189 Passing](https://img.shields.io/badge/Tests-189%20Passing-brightgreen.svg)](tests/)
+[![Tests: 218 Passing](https://img.shields.io/badge/Tests-218%20Passing-brightgreen.svg)](tests/)
 
 **The production-grade engineering operating system and mechanical gatekeeper for polyglot monorepos.**
 
@@ -108,12 +108,17 @@ All developer and agent operations are consolidated under the zero-dependency `e
 | **Code Intelligence** | `ep ast scan [--scope <dir>]` | Structural AST syntax scanning via `ast-grep` |
 | | `ep graph --check-boundaries` | Lint Hexagonal domain and library boundaries |
 | **Audit & Gatekeeper** | `ep audit [--diff origin/main] [--scope <dir>]` | Run 10-Dimension Enterprise Audit with scorecard |
-| | `ep verify [--heal]` | Run full parallel mechanical gatekeeper verification suite |
+| | `ep verify [--diff <base>] [--surface] [--heal]` | Run full 12-gate unified mechanical gatekeeper suite |
+| | `ep quality [--diff <base>] [--surface]` | Enforce idempotency, graceful shutdown, ephemeral DBs & domain purity |
 | | `ep nc check [--max-age 14]` | Audit `NEED_CLARIFICATION` items for 14-day merge block |
 | | `ep migration check [--diff]` | Zero-downtime Expand/Contract database migration linter |
-| **Security & Ops** | `ep security scan [--staged] [--diff]` | Pre-commit secret & credential scanner (Shannon entropy) |
+| **Security, Ops & Tooling** | `ep security scan [--staged] [--diff]` | Pre-commit secret & credential scanner (Shannon entropy) |
 | | `ep iac [--dir <dir>]` | Containerfile & orchestration security vulnerability gate |
-| | `ep license check [--sbom]` | Dependency copyleft compliance & SBOM generator |
+| | `ep license check [--sbom]` | Dependency copyleft compliance scanner |
+| | `ep contract verify [--file <path>] [--diff <base>]` | OpenAPI and Protobuf schema contract validation |
+| | `ep sbom generate [--format cyclonedx\|spdx]` | Multi-language SBOM generator (npm, pip, cargo, go) |
+| | `ep perf [--tool locust\|k6] [--dry-run]` | Performance, load & soak testing dispatcher |
+| | `ep chaos [--template]` | Chaos engineering & game-day hypothesis dispatcher |
 | | `ep slo [--file <path>]` | Validate SLO schemas, thresholds, and error budgets |
 | | `ep container [status\|detect]` | Smart OCI container engine detector & socket resolver |
 | **Git & Governance** | `ep vcs sync-check` | Validate alignment between `main`, `test`, `stage`, and `prod` |

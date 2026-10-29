@@ -218,7 +218,11 @@ ep graph [--format mermaid|json] [--check-boundaries]
 ep audit [--diff origin/main...HEAD | --scope <path>]
 ep doctor [--heal] [--root <monorepo-root>]
 ep migration check [--dir <migrations-dir>]
-ep verify [--root <monorepo-root>] [--heal]
+ep verify [--root <monorepo-root>] [--heal] [--diff <base>] [--surface]
+ep quality [--diff <base>] [--surface] [--scope <path>]
+ep contract verify [--file <path>] [--diff <base>]
+ep sbom generate [--format cyclonedx|spdx]
+ep chaos [--template]
 ep nc check [--max-age 14]
 ep policy
 ep telemetry

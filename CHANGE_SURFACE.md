@@ -1,17 +1,17 @@
 ---
-title: "Change Surface: Enterprise Enforcements and Agent Speed Acceleration"
-author: "Antigravity OS Engineer"
+title: "Change Surface: [Short Descriptive Title]"
+author: "[Author or Agent ID]"
 created_date: "2026-10-29"
 target_branch: "main"
 risk_level: "LOW"                    # LOW | MEDIUM | HIGH | CRITICAL
 affected_projects:
-  - "scripts"
+  - "services/core"
 ---
 
-# Change Surface: Enterprise Enforcements & Agent Speed Acceleration
+# Change Surface: [Feature or Task Title]
 
 ## 1. Intent & Business Rationale
-Implement complete Gap Assessment for Groups A through G and Tooling Guidance, connect standalone checkers into ep verify, implement mechanical quality invariants (idempotency, graceful shutdown, runbooks, ephemeral DBs, layer coverage), add tooling guidance extensions (ep chaos, ep contract, ep sbom, ep perf locust), and accelerate agent development cycle speed.
+[Provide a clear, unambiguous statement of why this change is needed, what problem it solves, and the expected business outcome.]
 
 ## 2. Affected Monorepo Projects & Profiles
 | Project Path | Architectural Profile | Responsibility in this Change |
@@ -22,37 +22,25 @@ Implement complete Gap Assessment for Groups A through G and Tooling Guidance, c
 Declare the exact files and symbols that will be modified or created. Modifying files outside this surface requires updating this document.
 
 ### Added Files
-- `scripts/ep_quality.py`
-- `scripts/ep_tooling.py`
-- `templates/openapi-contract.template.yaml`
-- `templates/service-contract.template.proto`
-- `templates/perf-test.locust.py`
-- `tests/test_ep_quality.py`
-- `tests/test_ep_tooling.py`
-- `tests/test_ep_fast_paths.py`
-
+- `services/core/src/index.ts`
 
 ### Modified Files
-- `scripts/ep.py`
-- `scripts/ep_ops.py`
-- `scripts/ep_ast.py`
-- `scripts/ep_context.py`
-- `AGENT.md`
-- `CLAUDE.md`
-- `.cursorrules`
-- `.windsurfrules`
-- `.gitignore`
-- `references/core-directives.md`
-- `references/audit-taxonomy.md`
-- `references/optional-tooling.md`
+- `services/core/src/service.ts`
 
 ## 4. Test Surface
 Every code change must have a corresponding test surface. Happy-path-only tests are prohibited.
 
 ### Unit & Domain Tests
-- `tests/test_ep_quality.py`
-- `tests/test_ep_tooling.py`
-- `tests/test_ep_fast_paths.py`
+- `services/core/tests/unit/service.spec.ts`
+
+### Integration Tests (Real Ephemeral Containers)
+- `services/core/tests/integration/service.test.ts`
+
+### Failure & Resilience Tests
+- `services/core/tests/integration/resilience.test.ts`
+
+### Concurrency Tests
+- `services/core/tests/integration/concurrency.test.ts`
 
 ## 5. Invariants & Non-Negotiables Preserved
 - [ ] Tier 1: Pure domain logic remains 100% free of framework or ORM imports.
