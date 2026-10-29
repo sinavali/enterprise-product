@@ -225,6 +225,15 @@ def cmd_pack(args: argparse.Namespace) -> int:
     max_lines = getattr(args, "max_lines", 800) or 800
     bundle_str, count, lines, bytes_count = pack_files(target_files, max_lines=max_lines, root_dir=root_dir)
 
+    if getattr(args, "summary", False):
+        summary_header = (
+            f"=== [EP-OS TASK CONTEXT & BLAST-RADIUS SUMMARY] ===\n"
+            f"Bundled Files ({count}):\n" + "\n".join(f"  • {f}" for f in target_files) + "\n"
+            f"Total Lines: {lines} | Total Bytes: {bytes_count}\n"
+            f"===================================================\n\n"
+        )
+        bundle_str = summary_header + bundle_str
+
     out_file = getattr(args, "output", None)
     if out_file:
         with open(out_file, "w", encoding="utf-8") as f:
@@ -245,6 +254,7 @@ def main():
     parser.add_argument("--files", nargs="+", help="Specific files to pack")
     parser.add_argument("--output", help="Output file path (default stdout)")
     parser.add_argument("--max-lines", type=int, default=800, help="Max lines per file")
+    parser.add_argument("--summary", action="store_true", help="Include blast-radius context summary at top of bundle")
     parser.add_argument("--root", default=".", help="Monorepo root")
     args = parser.parse_args()
     sys.exit(cmd_pack(args))

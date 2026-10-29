@@ -13,6 +13,11 @@ node_modules/
 dist/
 coverage/
 
+# Internal EP-OS & Caches
+.ep/
+.mypy_cache/
+.ruff_cache/
+
 # OS / Editor
 .DS_Store
 Thumbs.db

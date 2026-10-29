@@ -48,9 +48,20 @@ Enterprise products must remain reliable across deployments and distributed boun
 
 ### P11: Single-Turn Context Ingestion (Anti-Serialization Mandate)
 AI agents operating on enterprise products are **strictly prohibited from reading codebase files sequentially one-by-one across multiple conversational turns**. Sequential file reading introduces compounding network and turn latency. Agents and developers must use single-turn compound ingestion:
-- **Change Surface Packing**: Run `python3 scripts/ep.py pack --surface` to bundle all declared target files into stdout in a single command.
+- **Change Surface Packing**: Run `python3 scripts/ep.py pack --surface --summary` to bundle all declared target files into stdout in a single command.
 - **Git Diff Packing**: Run `python3 scripts/ep.py pack --diff` to ingest all modified and staged files in one turn.
 - **Direct Terminal Bundling**: Execute `tail -n +1 <file1> <file2> ...` in a single compound command to inject files directly into the model context before editing.
+
+### P12: Sub-Second Inner-Loop Gate Verification
+During active development cycles, agents must avoid running full monorepo re-audits on incremental turns. Instead, agents must execute scoped fast-path verifications:
+- **Diff-Scoped Verification**: Run `python3 scripts/ep.py verify --diff` or `python3 scripts/ep.py quality --diff` to evaluate only modified files, executing all gates in sub-second time.
+- **Mechanical Quality Enforcements**:
+  * Mutating route idempotency (`QUALITY-MUTATING-ROUTE-IDEMPOTENCY`): POST/PUT/PATCH endpoints require idempotency handling.
+  * Graceful shutdown / drain (`QUALITY-GRACEFUL-SHUTDOWN-DRAIN`): Server entrypoints must trap SIGTERM/SIGINT and drain connections.
+  * Operational runbook existence (`QUALITY-SERVICE-RUNBOOK-MISSING`): Deployable services must have `docs/runbooks/<service>.md`.
+  * Ephemeral real database test verification (`QUALITY-EPHEMERAL-TEST-FAKE-DB`): Banned in-memory SQL emulators (:memory:).
+  * Layer purity & coverage (`QUALITY-DOMAIN-LAYER-PURITY`, `QUALITY-DOMAIN-TEST-MISSING`): Pure domain logic and matching unit tests.
+- **Persistent AST Caching**: Clean file hashes are cached in `.ep/cache/ast_cache.json`, skipping unchanged files across turns.
 
 ---
 

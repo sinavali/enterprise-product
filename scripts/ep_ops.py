@@ -615,7 +615,9 @@ def cmd_container(args: argparse.Namespace) -> int:
 # ==============================================================================
 
 def cmd_perf(args: argparse.Namespace) -> int:
-    script = getattr(args, "script", None) or "templates/perf-test.k6.js"
+    tool = getattr(args, "tool", None) or ("locust" if (getattr(args, "script", None) or "").endswith(".py") else "k6")
+    default_script = "templates/perf-test.locust.py" if tool == "locust" else "templates/perf-test.k6.js"
+    script = getattr(args, "script", None) or default_script
     target_url = getattr(args, "target_url", None) or os.environ.get("TARGET_URL", "http://localhost:8080")
     vus = getattr(args, "vus", 10)
     duration = getattr(args, "duration", "10s")
@@ -625,48 +627,46 @@ def cmd_perf(args: argparse.Namespace) -> int:
         print(f"[ERROR] Performance test script '{script}' not found.", file=sys.stderr)
         return 1
 
-    print("=== EP-OS Performance & Stress Test Runner (k6) ===")
+    print(f"=== EP-OS Performance & Stress Test Runner ({tool}) ===")
     print(f"Target Script: {script}")
     print(f"Target URL   : {target_url}")
     print(f"Virtual Users: {vus} | Duration: {duration}\n")
 
-    k6_bin = shutil.which("k6")
+    tool_bin = shutil.which(tool)
     container_info = resolve_container_engine(check_liveness=not dry_run)
     container_engine = container_info["selected"]
 
     if dry_run:
-        engine_str = f"native k6 ({k6_bin})" if k6_bin else (f"container ({container_engine})" if container_engine else "none (fallback instructions)")
+        engine_str = f"native {tool} ({tool_bin})" if tool_bin else (f"container ({container_engine})" if container_engine else "none (fallback instructions)")
         print(f"[OK] Dry run successful: Script '{script}' exists and execution engine detected: {engine_str}.")
         return 0
 
-    if k6_bin:
-        cmd = [k6_bin, "run", "--vus", str(vus), "--duration", str(duration), "-e", f"TARGET_URL={target_url}", script]
-        print(f"[EXEC] Running native k6: {' '.join(cmd)}")
+    if tool_bin:
+        if tool == "locust":
+            cmd = [tool_bin, "-f", script, "--headless", "-u", str(vus), "-r", "2", "-t", str(duration), "--host", target_url]
+        else:
+            cmd = [tool_bin, "run", "--vus", str(vus), "--duration", str(duration), "-e", f"TARGET_URL={target_url}", script]
+        print(f"[EXEC] Running native {tool}: {' '.join(cmd)}")
         return subprocess.run(cmd, timeout=600).returncode
 
     # Check container runtime fallback
     if container_engine:
-        print(f"[INFO] Native k6 binary not found; falling back to {container_info['reason']}.")
+        print(f"[INFO] Native {tool} binary not found; falling back to {container_info['reason']}.")
         cwd = os.getcwd()
+        image = "locustio/locust:latest" if tool == "locust" else "grafana/k6:latest"
+        sub_cmd = ["-f", f"/work/{script}", "--headless", "-u", str(vus), "-r", "2", "-t", str(duration), "--host", target_url] if tool == "locust" else ["run", "--vus", str(vus), "--duration", str(duration), f"/work/{script}"]
         cmd = [
             container_engine, "run", "--rm", "-i",
             "-v", f"{cwd}:/work:z",
             "-w", "/work",
             "-e", f"TARGET_URL={target_url}",
-            "grafana/k6:latest", "run",
-            "--vus", str(vus), "--duration", str(duration),
-            script,
-        ]
-        print(f"[EXEC] Running containerized k6: {' '.join(cmd)}")
+            image,
+        ] + sub_cmd
+        print(f"[EXEC] Running containerized {tool}: {' '.join(cmd)}")
         return subprocess.run(cmd, timeout=600).returncode
 
-    print("[WARN] Neither 'k6' nor an OCI container engine (podman/docker) was detected.", file=sys.stderr)
+    print(f"[WARN] Neither '{tool}' nor an OCI container engine was detected.", file=sys.stderr)
     print("       Per 'references/optional-tooling.md', performance testing degrades gracefully.", file=sys.stderr)
-    print("       To execute performance tests:", file=sys.stderr)
-    print("         1. Install k6: 'https://k6.io/docs/get-started/installation/'", file=sys.stderr)
-    print("         2. Or install an OCI container engine:", file=sys.stderr)
-    for instr in container_info["install_instructions"]:
-        print(f"            • {instr}", file=sys.stderr)
     return 0
 
 

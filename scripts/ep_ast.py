@@ -3,18 +3,28 @@
 ep_ast.py — Structural Code Intelligence & AST Scanning Engine for EP-OS
 Integrates ast-grep for syntax-tree search, structural linting, and semantic
 invariant verification across polyglot languages (TS, JS, Go, Rust, Python, PHP).
+Includes persistent AST result caching (.ep/cache/ast_cache.json) and diff scoping
+for accelerated agent feedback cycles.
 """
 
 import argparse
+import hashlib
 import json
 import os
 import re
 import shutil
 import subprocess
 import sys
-from typing import Any, Callable, Dict, List, Optional, Tuple, cast
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, cast
+
+try:
+    from scripts.ep_context import collect_files_from_diff, collect_files_from_surface
+except ImportError:
+    from ep_context import collect_files_from_diff, collect_files_from_surface  # type: ignore[import-not-found,no-redef]
 
 AST_GREP_BIN = shutil.which("ast-grep")
+CACHE_FILE = ".ep/cache/ast_cache.json"
+
 
 # Structural AST Rules for Enterprise Auditing
 STRUCTURAL_AST_RULES = [
@@ -126,6 +136,33 @@ def is_ast_grep_available() -> bool:
     return AST_GREP_BIN is not None
 
 
+def _sha256_file(filepath: str) -> str:
+    try:
+        with open(filepath, "rb") as fh:
+            return hashlib.sha256(fh.read()).hexdigest()
+    except Exception:
+        return ""
+
+
+def load_ast_cache() -> Dict[str, Any]:
+    if os.path.exists(CACHE_FILE):
+        try:
+            with open(CACHE_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+
+def save_ast_cache(cache: Dict[str, Any]) -> None:
+    try:
+        os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
+        with open(CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(cache, f, indent=2)
+    except Exception:
+        pass
+
+
 def run_ast_query(pattern: str, scope: str = ".", lang: Optional[str] = None) -> List[Dict[str, Any]]:
     if not is_ast_grep_available() or not AST_GREP_BIN:
         return []
@@ -143,44 +180,83 @@ def run_ast_query(pattern: str, scope: str = ".", lang: Optional[str] = None) ->
     return []
 
 
-def scan_structural_rules(scope: str = ".") -> List[Dict[str, Any]]:
+LANG_EXTENSIONS = {
+    "typescript": {".ts", ".tsx"},
+    "javascript": {".js", ".jsx", ".mjs", ".cjs"},
+    "python": {".py"},
+    "go": {".go"},
+    "rust": {".rs"},
+    "php": {".php"},
+}
+
+
+def scan_structural_rules(scope: str = ".", target_files: Optional[List[str]] = None, use_cache: bool = True) -> List[Dict[str, Any]]:
     if not is_ast_grep_available():
         return []
 
-    findings = []
-    for rule in STRUCTURAL_AST_RULES:
-        patterns = cast(List[Tuple[str, str]], rule.get("patterns", []))
-        path_filter = cast(Callable[[str], bool], rule.get("path_filter", lambda p: True))
-        for lang, pattern in patterns:
-            matches = run_ast_query(pattern, scope=scope, lang=lang)
-            for m in matches:
-                file_path = m.get("file", "")
-                norm_p = file_path.replace("\\", "/")
-                parts = set(norm_p.split("/"))
-                if parts.intersection({"node_modules", "dist", "dist-next", ".next", "build", ".nx", "coverage", ".git", ".cache"}):
+    cache = load_ast_cache() if use_cache else {}
+    findings: List[Dict[str, Any]] = []
+
+    # If target_files is provided, scope to those files
+    scopes = target_files if target_files is not None else [scope]
+
+    for target_scope in scopes:
+        is_file = os.path.isfile(target_scope)
+        target_ext = os.path.splitext(target_scope)[1].lower() if is_file else ""
+
+        if is_file and use_cache:
+            file_hash = _sha256_file(target_scope)
+            if file_hash and target_scope in cache:
+                cached_entry = cache[target_scope]
+                if cached_entry.get("hash") == file_hash:
+                    findings.extend(cached_entry.get("findings", []))
                     continue
-                if not path_filter(file_path):
+
+        file_findings: List[Dict[str, Any]] = []
+        for rule in STRUCTURAL_AST_RULES:
+            patterns = cast(List[Tuple[str, str]], rule.get("patterns", []))
+            path_filter = cast(Callable[[str], bool], rule.get("path_filter", lambda p: True))
+            for lang, pattern in patterns:
+                # Performance optimization: skip rules if inspecting a single file whose extension doesn't match the language
+                if is_file and lang in LANG_EXTENSIONS and target_ext not in LANG_EXTENSIONS[lang]:
                     continue
 
-                # For $A == $A identity patterns, ensure single variable meta-variables match if present
-                meta = m.get("metaVariables", {}).get("single", {})
-                if "$A" in pattern and "A" in meta:
-                    # In ast-grep, matching expect($A).toBe($A) automatically matches identical A nodes
-                    pass
+                matches = run_ast_query(pattern, scope=target_scope, lang=lang)
+                for m in matches:
+                    file_path = m.get("file", "")
+                    norm_p = file_path.replace("\\", "/")
+                    parts = set(norm_p.split("/"))
+                    if parts.intersection({"node_modules", "dist", "dist-next", ".next", "build", ".nx", "coverage", ".git", ".cache"}):
+                        continue
+                    if not path_filter(file_path):
+                        continue
 
-                start_line = m.get("range", {}).get("start", {}).get("line", 0) + 1
-                snippet = m.get("lines", "").strip()[:100]
+                    start_line = m.get("range", {}).get("start", {}).get("line", 0) + 1
+                    snippet = m.get("lines", "").strip()[:100]
 
-                findings.append({
-                    "dim": rule["dim"],
-                    "id": rule["id"],
-                    "severity": rule["severity"],
-                    "description": rule["description"],
-                    "file": file_path,
-                    "line": start_line,
-                    "snippet": snippet,
-                    "engine": "ast-grep",
-                })
+                    item = {
+                        "dim": rule["dim"],
+                        "id": rule["id"],
+                        "severity": rule["severity"],
+                        "description": rule["description"],
+                        "file": file_path,
+                        "line": start_line,
+                        "snippet": snippet,
+                        "engine": "ast-grep",
+                    }
+                    findings.append(item)
+                    file_findings.append(item)
+
+        if is_file and use_cache:
+            file_hash = _sha256_file(target_scope)
+            if file_hash:
+                cache[target_scope] = {
+                    "hash": file_hash,
+                    "findings": file_findings,
+                }
+
+    if use_cache:
+        save_ast_cache(cache)
 
     return findings
 
@@ -193,6 +269,13 @@ def cmd_ast(args: argparse.Namespace) -> int:
 
     action = getattr(args, "action", "search")
     scope = getattr(args, "scope", ".") or "."
+    target_files: Optional[List[str]] = None
+
+    if getattr(args, "surface", False):
+        target_files = collect_files_from_surface(root_dir=scope if os.path.isdir(scope) else ".")
+    elif getattr(args, "diff", None):
+        base = args.diff if isinstance(args.diff, str) else "origin/main"
+        target_files = collect_files_from_diff(base=base, root_dir=scope if os.path.isdir(scope) else ".")
 
     if action == "search":
         pattern = args.pattern
@@ -212,8 +295,14 @@ def cmd_ast(args: argparse.Namespace) -> int:
 
     elif action == "scan":
         print(f"=== ast-grep Structural Invariant Scanner ===")
-        print(f"Scanning scope: '{scope}' against 10-dimension AST rules...")
-        findings = scan_structural_rules(scope=scope)
+        if target_files is not None:
+            scope_desc = "active Change Surface" if getattr(args, "surface", False) else "git diff"
+            print(f"Scanning {scope_desc} ({len(target_files)} modified file(s)) with AST cache...")
+        else:
+            print(f"Scanning scope: '{scope}' against 10-dimension AST rules...")
+
+
+        findings = scan_structural_rules(scope=scope, target_files=target_files)
         if not findings:
             print("[PASS] Zero structural AST violations detected.")
             return 0

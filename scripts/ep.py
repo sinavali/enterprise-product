@@ -30,12 +30,14 @@ try:
     from scripts.ep_doctor import cmd_ci, cmd_doctor, cmd_skill, run_doctor
     from scripts.ep_hooks import cmd_hooks
     from scripts.ep_ops import cmd_codeowners, cmd_container, cmd_dora, cmd_finops, cmd_perf, cmd_slo, cmd_telemetry
+    from scripts.ep_quality import cmd_quality, run_enterprise_verify
     from scripts.ep_runner import cmd_graph, cmd_run, cmd_run_many
     from scripts.ep_scaffold import archive_change_surface, cmd_init, cmd_manifest, cmd_preflight, cmd_worktree, is_surface_unpopulated
     from scripts.ep_security import cmd_iac, cmd_license, cmd_policy, cmd_security
     from scripts.ep_session import cmd_session
     from scripts.ep_stack import STACK_DEFINITIONS, detect_stack
     from scripts.ep_sync import cmd_sync_skill
+    from scripts.ep_tooling import cmd_chaos, cmd_contract, cmd_sbom
     from scripts.ep_vcs import BaseGitProvider, GitHubProvider, GitLabProvider, LocalGitProvider, cmd_pr, cmd_vcs, get_git_provider
 except ImportError:
     from ep_adopt import cmd_adopt  # type: ignore[import-not-found,no-redef]
@@ -44,12 +46,14 @@ except ImportError:
     from ep_doctor import cmd_ci, cmd_doctor, cmd_skill, run_doctor  # type: ignore[import-not-found,no-redef]
     from ep_hooks import cmd_hooks  # type: ignore[import-not-found,no-redef]
     from ep_ops import cmd_codeowners, cmd_container, cmd_dora, cmd_finops, cmd_perf, cmd_slo, cmd_telemetry  # type: ignore[import-not-found,no-redef]
+    from ep_quality import cmd_quality, run_enterprise_verify  # type: ignore[import-not-found,no-redef]
     from ep_runner import cmd_graph, cmd_run, cmd_run_many  # type: ignore[import-not-found,no-redef]
     from ep_scaffold import archive_change_surface, cmd_init, cmd_manifest, cmd_preflight, cmd_worktree, is_surface_unpopulated  # type: ignore[import-not-found,no-redef]
     from ep_security import cmd_iac, cmd_license, cmd_policy, cmd_security  # type: ignore[import-not-found,no-redef]
     from ep_session import cmd_session  # type: ignore[import-not-found,no-redef]
     from ep_stack import STACK_DEFINITIONS, detect_stack  # type: ignore[import-not-found,no-redef]
     from ep_sync import cmd_sync_skill  # type: ignore[import-not-found,no-redef]
+    from ep_tooling import cmd_chaos, cmd_contract, cmd_sbom  # type: ignore[import-not-found,no-redef]
     from ep_vcs import BaseGitProvider, GitHubProvider, GitLabProvider, LocalGitProvider, cmd_pr, cmd_vcs, get_git_provider  # type: ignore[import-not-found,no-redef]
 
 def _resolve_change_surface(target_file: str) -> str:
@@ -146,7 +150,7 @@ def cmd_surface(args: argparse.Namespace) -> int:
         out_of_bounds = []
 
         for m_file in modified_files:
-            if m_file.endswith(exempt_suffixes) or m_file.startswith("docs/") or m_file == "CHANGE_SURFACE.md":
+            if m_file.endswith(exempt_suffixes) or m_file.startswith(("docs/", ".ep/", ".git/")) or m_file in ("CHANGE_SURFACE.md", ".gitignore"):
                 continue
 
             covered = False
@@ -528,6 +532,8 @@ def main():
     p_verify = subparsers.add_parser("verify", help="Run parallel mechanical gatekeeper suite")
     p_verify.add_argument("--root", default=".", help="Root directory to scan")
     p_verify.add_argument("--heal", action="store_true", help="Autonomously heal missing prerequisites before verifying")
+    p_verify.add_argument("--diff", nargs="?", const="origin/main", help="Run verification scoped to git diff (fast-path)")
+    p_verify.add_argument("--surface", action="store_true", help="Run verification scoped to active Change Surface (fast-path)")
 
     p_nc = subparsers.add_parser("nc", help="Audit NEED_CLARIFICATION items for expiration")
     p_nc.add_argument("action", choices=["check"], help="Action to perform")
@@ -589,6 +595,8 @@ def main():
     p_ast.add_argument("pattern", nargs="?", default="", help="Structural pattern to search for")
     p_ast.add_argument("--scope", default=".", help="Directory or file path to inspect")
     p_ast.add_argument("--lang", default=None, help="Target language (typescript, python, go, rust, php)")
+    p_ast.add_argument("--diff", nargs="?", const="origin/main", help="Scan git diff files")
+    p_ast.add_argument("--surface", action="store_true", help="Scan active Change Surface files")
 
     # run
     p_run = subparsers.add_parser("run", help="Execute single project target in topological dependency order")
@@ -605,6 +613,7 @@ def main():
 
     # iac
     p_iac = subparsers.add_parser("iac", help="Infrastructure as Code (IaC) container & orchestration security gate")
+    p_iac.add_argument("action", nargs="?", default="verify", choices=["verify", "scan"], help="IaC action")
     p_iac.add_argument("--dir", default=".", help="Directory to scan")
 
     # slo
@@ -620,8 +629,9 @@ def main():
     p_dora.add_argument("--days", type=int, default=30, help="Number of days of history to analyze")
 
     # perf
-    p_perf = subparsers.add_parser("perf", help="Run standard k6 performance and stress tests")
-    p_perf.add_argument("--script", default=None, help="Path to k6 test script")
+    p_perf = subparsers.add_parser("perf", help="Run standard k6 or locust performance and stress tests")
+    p_perf.add_argument("--tool", default=None, choices=["k6", "locust"], help="Performance test engine")
+    p_perf.add_argument("--script", default=None, help="Path to test script")
     p_perf.add_argument("--target-url", default=None, help="Base target URL")
     p_perf.add_argument("--vus", type=int, default=10, help="Virtual users")
     p_perf.add_argument("--duration", default="10s", help="Duration string")
@@ -640,6 +650,7 @@ def main():
     p_pack.add_argument("--scope", help="Directory scope to pack")
     p_pack.add_argument("--output", help="Output file path (default stdout)")
     p_pack.add_argument("--max-lines", type=int, default=800, help="Max lines per file")
+    p_pack.add_argument("--summary", action="store_true", help="Include task context summary at top of bundle")
     p_pack.add_argument("--root", default=".", help="Monorepo root")
 
     # doctor (prerequisite audit and autonomous healing)
@@ -658,6 +669,36 @@ def main():
     p_ci.add_argument("action", nargs="?", default="init", choices=["init"], help="CI action")
     p_ci.add_argument("--platform", default="github", choices=["github", "gitlab"], help="CI platform")
     p_ci.add_argument("--root", default=".", help="Monorepo root")
+
+    # quality (production-readiness quality gates)
+    p_qual = subparsers.add_parser("quality", help="Enterprise production quality & idempotency gates")
+    p_qual.add_argument("action", nargs="?", default="check", choices=["check"], help="Quality action")
+    p_qual.add_argument("--diff", nargs="?", const="origin/main", help="Scope checks to git diff")
+    p_qual.add_argument("--surface", action="store_true", help="Scope checks to active Change Surface")
+    p_qual.add_argument("--root", default=".", help="Monorepo root")
+    p_qual.add_argument("--json", action="store_true", help="Output findings as JSON")
+
+    # chaos (chaos engineering experiment runner)
+    p_chaos = subparsers.add_parser("chaos", help="Chaos engineering experiment management & verification")
+    p_chaos.add_argument("action", nargs="?", default="verify", choices=["scaffold", "verify", "run"], help="Chaos action")
+    p_chaos.add_argument("name", nargs="?", default=None, help="Experiment name")
+    p_chaos.add_argument("--file", default=None, help="Chaos experiment plan file")
+    p_chaos.add_argument("--service", default=None, help="Target service name")
+    p_chaos.add_argument("--dry-run", action="store_true", help="Dry run simulation")
+
+    # contract (API & schema contract verification)
+    p_contract = subparsers.add_parser("contract", help="API and schema contract testing & compatibility verification")
+    p_contract.add_argument("action", nargs="?", default="verify", choices=["verify", "lint"], help="Contract action")
+    p_contract.add_argument("--dir", default=None, help="Directory containing schemas")
+    p_contract.add_argument("--file", default=None, help="Specific schema file")
+    p_contract.add_argument("--diff", nargs="?", const="origin/main", help="Verify contract changes against base")
+
+    # sbom (Software Bill of Materials)
+    p_sbom = subparsers.add_parser("sbom", help="Software Bill of Materials (SBOM) generator and validator")
+    p_sbom.add_argument("action", nargs="?", default="generate", choices=["generate", "verify"], help="SBOM action")
+    p_sbom.add_argument("--output", default="sbom.json", help="Output SBOM file path")
+    p_sbom.add_argument("--format", choices=["cyclonedx", "spdx"], default="cyclonedx", help="SBOM format")
+    p_sbom.add_argument("--file", default=None, help="SBOM file to verify")
 
     args = parser.parse_args()
 
@@ -682,48 +723,20 @@ def main():
             cmd.append("--json")
         return subprocess.run(cmd, timeout=300).returncode
 
-    def run_verify(a: argparse.Namespace) -> int:
-        root_dir = getattr(a, "root", ".") or "."
-        if getattr(a, "heal", False):
-            run_doctor(root_dir=root_dir, heal=True)
-        print("=== 1. Verifying Nx Target Contracts ===")
-        nx_res = subprocess.run([sys.executable, os.path.join(SCRIPTS_DIR, "verify-nx-targets.py"), "--root", root_dir], timeout=30).returncode
-
-        print("\n=== 2. Linting AGENT.md Manifests ===")
-        agent_res = subprocess.run([sys.executable, os.path.join(SCRIPTS_DIR, "verify-agent-manifests.py"), "--root", root_dir], timeout=30).returncode
-
-        print("\n=== 3. Checking Open NC Item Expiration ===")
-        nc_dir = os.path.join(root_dir, "docs/nc")
-        if os.path.exists(nc_dir):
-            nc_res = subprocess.run([sys.executable, os.path.join(SCRIPTS_DIR, "check-nc-items.py"), "--dir", nc_dir, "--max-age", "14"], timeout=30).returncode
-        else:
-            print("[INFO] No docs/nc directory found under root. 0 open NC items.")
-            nc_res = 0
-
-        print("\n=== 4. Checking Expand/Contract Database Migrations ===")
-        mig_res = cmd_migration(argparse.Namespace(dir=root_dir, diff=False, base="origin/main"))
-
-        print("\n=== 5. Scanning for Hardcoded Secrets ===")
-        sec_res = cmd_security(argparse.Namespace(action="scan", dir=root_dir, staged=False, diff=None))
-
-        print("\n=== 6. Checking Change Surface Compliance ===")
-        surf_res = cmd_surface(argparse.Namespace(action="check-diff", file=None, surface_file=None, output=None, base="origin/main", strict=False))
-
-        return 0 if (nx_res == 0 and agent_res == 0 and nc_res == 0 and mig_res == 0 and sec_res == 0 and surf_res == 0) else 1
-
     dispatch = {
         "surface": cmd_surface, "migration": cmd_migration, "graph": cmd_graph,
         "init": cmd_init, "worktree": cmd_worktree, "vcs": cmd_vcs, "pr": cmd_pr,
         "session": cmd_session, "manifest": cmd_manifest, "preflight": cmd_preflight,
         "release": cmd_release, "milestone": cmd_milestone, "audit": run_audit,
-        "verify": run_verify,
+        "verify": run_enterprise_verify,
         "nc": lambda a: subprocess.run([sys.executable, os.path.join(SCRIPTS_DIR, "check-nc-items.py"), "--max-age", str(a.max_age)], timeout=30).returncode,
         "hooks": cmd_hooks, "security": cmd_security, "license": cmd_license, "adopt": cmd_adopt,
         "telemetry": cmd_telemetry, "finops": cmd_finops, "policy": cmd_policy,
         "sync-skill": cmd_sync_skill, "ast": cmd_ast, "run": cmd_run, "run-many": cmd_run_many,
         "iac": cmd_iac, "slo": cmd_slo, "codeowners": cmd_codeowners, "dora": cmd_dora,
         "perf": cmd_perf, "container": cmd_container, "pack": cmd_pack, "context": cmd_pack,
-        "doctor": cmd_doctor, "skill": cmd_skill, "ci": cmd_ci,
+        "doctor": cmd_doctor, "skill": cmd_skill, "ci": cmd_ci, "quality": cmd_quality,
+        "chaos": cmd_chaos, "contract": cmd_contract, "sbom": cmd_sbom,
     }
     if args.subcommand in dispatch:
         sys.exit(dispatch[args.subcommand](args))
