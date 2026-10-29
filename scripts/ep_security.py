@@ -13,6 +13,7 @@ import json
 import math
 import os
 import re
+import shutil
 import subprocess
 import sys
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -88,6 +89,9 @@ EXCLUDED_SCAN_DIRS = {
     ".nx",
     "coverage",
     "__pycache__",
+    "obj",
+    "bin",
+    "target",
 }
 
 COPYLEFT_LICENSES = {
@@ -502,4 +506,29 @@ def cmd_iac(args: argparse.Namespace) -> int:
         return 1
 
     return 0
+
+
+def cmd_policy(args: argparse.Namespace) -> int:
+    """Enterprise policy engine & compliance validation via Conftest / OPA or native static security policies."""
+    action = getattr(args, "action", "test") or "test"
+    root_dir = getattr(args, "root", ".") or "."
+    scope = getattr(args, "scope", None) or root_dir
+
+    print("=== EP-OS Enterprise Policy Engine & Compliance Validation ===")
+    conftest_bin = shutil.which("conftest")
+    if conftest_bin:
+        policy_dir = os.path.join(root_dir, "policy")
+        cmd = [conftest_bin, "test", scope]
+        if os.path.exists(policy_dir):
+            cmd.extend(["-p", policy_dir])
+        res = subprocess.run(cmd, check=False, timeout=60)
+        return res.returncode
+
+    print("  ℹ️ 'conftest' binary not detected in PATH; falling back to native static security & IaC policies.")
+    iac_args = argparse.Namespace(action="verify", dir=scope)
+    rc = cmd_iac(iac_args)
+    if rc == 0:
+        print("[OK] Policy: Zero policy violations detected across governance rules.")
+    return rc
+
 

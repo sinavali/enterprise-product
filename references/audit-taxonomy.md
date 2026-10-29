@@ -82,8 +82,8 @@ Every finding discovered during an audit must be categorized into one of three s
 - **Check 6.8 (Metric Cardinality Bounding)**: Metric labels/tags must have bounded, finite values. Unbounded identifiers (user IDs, email addresses, order IDs) in metric labels are strictly prohibited.
 
 ### Dimension 7: Contract & Schema Drift
-- **Check 7.1 (Schema Alignment)**: Code implementations must match OpenAPI / Protobuf schemas exactly.
-- **Check 7.2 (Backward Compatibility)**: No breaking changes to existing API schemas without a major SemVer bump and deprecation notice.
+- **Check 7.1 (Schema Alignment & Contract Boundaries)**: Code implementations must match OpenAPI / Protobuf schemas exactly. Direct cross-project relative imports bypassing published package contracts (`RULE-7.1-DIRECT-CROSS-PROJECT-IMPORT`) are strictly forbidden; inter-service boundaries must be crossed via shared contracts (e.g. `libs/core-contracts`).
+- **Check 7.2 (Backward Compatibility & Versioned Mutations)**: No breaking changes to existing API schemas without a major SemVer bump and deprecation notice. Direct unversioned deletion or dropping of schema fields (`RULE-7.2-UNVERSIONED-CONTRACT-MUTATION`) without deprecation markers violates contract stability.
 - **Check 7.3 (Client SDK Regeneration)**: Ensure generated client libraries are synchronized with updated schemas without manual drift.
 
 ### Dimension 8: Code Quality & Typing Strictness
@@ -123,3 +123,112 @@ Every finding discovered during an audit must be categorized into one of three s
 4. **Pass/Fail Decision**:
    - If `count(blocking) == 0` ➔ Audit Status: **PASS**.
    - If `count(blocking) > 0` ➔ Audit Status: **FAIL** (requires remediation before PR merge).
+
+---
+
+## 4. Complete Enterprise Term Gap Assessment & Mechanical Enforcement Matrix
+
+This matrix maps enterprise production qualities (Groups A through G) and Tooling Guidance to their mechanical enforcement mechanisms within EP-OS:
+
+### 🏗️ Group A: Architectural & Design Qualities
+| Term | Status | Enforcement Mechanism | Command / Gate |
+|---|---|---|---|
+| **Scalability** | Enforced | Dim 1 heuristic scanner (`RULE-1.1-UNBOUNDED-SCAN`), statelessness rules | `ep audit`, `ep perf` |
+| **Modularity** | Enforced | Nx project contracts, boundary integrity checker, DAG task runner | `ep graph --check-boundaries`, `ep run` |
+| **Loose Coupling & High Cohesion** | Enforced | Dim 7 cross-project import check (`RULE-7.1`), anti-dumping ground rule (`RULE-2.8`) | `ep graph`, `ep audit` |
+| **Statelessness** | Enforced | Dim 1 mutable global state scanner (`RULE-1.5`), AST grep scanner | `ep ast scan`, `ep audit` |
+| **API-First Design** | Enforced | Profile D contracts requirement, OpenAPI/AsyncAPI contract verification | `ep contract verify`, `ep init` |
+| **Configurability** | Enforced | Dim 8 12-factor typed config check (`RULE-8.6-NAKED-ENV-IN-DOMAIN`) | `ep audit`, `ep quality` |
+
+### 📡 Group B: Observability & Monitoring
+| Term | Status | Enforcement Mechanism | Command / Gate |
+|---|---|---|---|
+| **Logging** | Enforced | Dim 6 structured JSON log checker (`RULE-6.1-BARE-CONSOLE-LOG`) | `ep audit` |
+| **Telemetry** | Enforced | OTel collector config verification, telemetry command | `ep telemetry verify` |
+| **Monitoring** | Enforced | Prometheus alert schema validation (`templates/monitoring/alerts.template.yaml`) | `ep slo`, `ep telemetry` |
+| **Distributed Tracing** | Enforced | Dim 6 W3C `traceparent` context propagation check (`RULE-6.7`) | `ep audit` |
+| **Health Checks** | Enforced | Contract testing health probe verification (`/healthz`, `/readyz`), IaC liveness | `ep contract verify`, `ep iac` |
+| **Audit Trails** | Enforced | Dim 4 append-only audit trail migration template (`templates/audit-log-migration.sql`) | `ep migration` |
+
+### 🛡️ Group C: Reliability & Resilience
+| Term | Status | Enforcement Mechanism | Command / Gate |
+|---|---|---|---|
+| **High Availability** | Enforced | Multi-replica IaC checks, zero-downtime expand/contract migrations | `ep iac`, `ep migration` |
+| **Disaster Recovery** | Enforced | Automated RTO/RPO drill guidance, immutable backups | `references/release-and-milestone-governance.md` |
+| **Fault Tolerance** | Enforced | Timeouts, retries with backoff, circuit breaker, bulkhead isolation | `ep quality`, `ep audit` |
+| **Graceful Degradation** | Enforced | Fallback handlers, optional tooling degradation protocol | `references/optional-tooling.md` |
+| **Circuit Breaker** | Enforced | Profile A resilience standard, Half-Open state validation | `templates/CHAOS_EXPERIMENT.template.md` |
+| **Data Consistency** | Enforced | Zero-downtime Expand/Contract migrations, Transactional Outbox | `ep migration`, `templates/outbox-migration.sql` |
+| **Timeouts & Deadlines** | Enforced | Dim 3 remote network timeout enforcement | `ep audit` |
+| **Retries with Jitter** | Enforced | Dim 3 infinite retry blocker (`RULE-3.1-INFINITE-RETRY`), capped backoff | `ep audit`, `ep ast scan` |
+| **Idempotency** | Enforced | Mutating route idempotency checker (`QUALITY-MUTATING-ROUTE-IDEMPOTENCY`) | `ep quality check`, `ep verify` (Gate 11) |
+| **Backpressure** | Enforced | Dim 3 queue prefetch limiter (`RULE-3.7-UNBOUNDED-QUEUE-PREFETCH`) | `ep audit` |
+| **Rate Limiting / Quotas** | Enforced | Public ingress rate limiting check (Dim 5.8), gateway policies | `references/architectural-profiles.md` |
+| **Bulkheads** | Enforced | Isolated threadpools / client connection pools per dependency | `references/architectural-profiles.md` |
+| **Graceful Shutdown / Drain**| Enforced | Server entrypoint shutdown linter (`QUALITY-GRACEFUL-SHUTDOWN-DRAIN`) | `ep quality check`, `ep verify` (Gate 11) |
+| **Outbox / Saga / DLQ** | Enforced | Transactional outbox migration (`templates/outbox-migration.sql`), DLQ check | `ep migration`, `ep audit` |
+
+### 🔒 Group D: Security & Compliance
+| Term | Status | Enforcement Mechanism | Command / Gate |
+|---|---|---|---|
+| **Authentication & RBAC** | Enforced | Dim 5 identity and least-privilege verification | `ep audit` |
+| **Encryption at Rest/Transit**| Enforced | TLS/HTTPS and KMS envelope encryption validation | `ep security`, `ep audit` |
+| **Secrets Management** | Enforced | Pre-commit entropy & regex secret scanner (`ep security scan`) | `ep verify` (Gate 5) |
+| **Secrets Rotation** | Enforced | Dynamic reload / dual-token overlap verification | `references/compliance-matrix.md` |
+| **Compliance (SOC2/GDPR)** | Enforced | Compliance matrix mapping, data residency hooks | `references/compliance-matrix.md` |
+| **Supply Chain Security** | Enforced | License copyleft scanner (`ep license`) + SBOM generator/validator | `ep license check`, `ep sbom` |
+| **Threat Modeling** | Enforced | Formal threat model template (`templates/THREAT_MODEL.template.md`) | `templates/` |
+| **SAST / DAST / SCA** | Enforced | Ast-grep structural invariant scanner, 10-dimension audit | `ep ast scan`, `ep audit` |
+| **Zero Trust / Least Priv** | Enforced | IaC non-root user (`IAC-DOCKER-ROOT-USER`), unprivileged K8s pods | `ep iac` (Gate 9) |
+| **Policy as Code** | Enforced | Conftest / OPA policy test integration with static fallback | `ep policy test` |
+| **PII & Data Classification**| Enforced | Dim 6 PII log scrubber (`RULE-6.5-PII-LOGGING`) | `ep audit` |
+| **Key Management (KMS)** | Enforced | Unencrypted private key blocker in secret scanner | `ep security scan` |
+| **Multi-Tenancy Isolation** | Enforced | Tenant context scoping and RLS query isolation | `references/architectural-profiles.md` |
+
+### 🚀 Group E: Engineering & Delivery
+| Term | Status | Enforcement Mechanism | Command / Gate |
+|---|---|---|---|
+| **CI/CD** | Enforced | Multi-platform workflow generator (`ep ci init`), pre-commit hooks | `ep ci`, `ep hooks install` |
+| **Testability & Test Pyramid**| Enforced | Domain isolation, test assertion quality (`RULE-10.1`, `RULE-10.2`) | `ep quality`, `ep audit` |
+| **IaC & Immutable Infra** | Enforced | Containerfile & K8s/Compose security scanner (`ep iac`) | `ep iac` (Gate 9) |
+| **Quality Gates** | Enforced | 12-Step unified mechanical gatekeeper suite | `ep verify` |
+| **Code Review & ADRs** | Enforced | ADR template (`templates/ADR.template.md`), `-- adr-ref:` in migrations | `ep migration check` |
+| **Feature Flags / Toggles** | Enforced | Lifespan and expiration tagging protocol | `references/audit-taxonomy.md` |
+| **Canary / Blue-Green** | Enforced | Expand/Contract zero-downtime migrations | `ep migration` (Gate 4) |
+| **GitOps & Branch Promotion**| Enforced | Multi-tier branch promotion (`main` -> `test` -> `stage` -> `prod`) | `ep vcs promote` |
+| **Environment Parity** | Enforced | Real ephemeral containers for integration tests (Podman/Docker) | `ep container`, `ep quality` |
+| **Contract Testing** | Enforced | OpenAPI / Protobuf schema validator & breaking change detector | `ep contract verify` |
+| **CODEOWNERS** | Enforced | Code ownership verification & directory mapping | `ep codeowners check` |
+| **DORA Metrics** | Enforced | Automated git-derived DORA metric calculator | `ep dora` |
+| **Operational Runbooks** | Enforced | Service runbook existence checker (`QUALITY-SERVICE-RUNBOOK-MISSING`) | `ep quality check`, `ep verify` (Gate 11) |
+
+### 🧩 Group F: Maintainability & Operability
+| Term | Status | Enforcement Mechanism | Command / Gate |
+|---|---|---|---|
+| **Maintainability** | Enforced | Hard file ceiling ($\le 800$ lines), folder depth ($\le 6$ levels) | `ep audit`, `ep quality` |
+| **Manageability** | Enforced | Unified CLI orchestrator | `ep` |
+| **Performance Efficiency** | Enforced | Bounded collections, streaming, k6/locust stress tests | `ep perf` |
+| **Documentation** | Enforced | 4-tier documentation system (`docs/adr`, `docs/runbooks`, `docs/changes`, `docs/nc`) | `references/documentation-system.md` |
+| **FinOps / Cost Observability**| Enforced | Cloud cost annotations, budget tracking | `ep finops` |
+
+### 📈 Group G: Performance & Deep Observability
+| Term | Status | Enforcement Mechanism | Command / Gate |
+|---|---|---|---|
+| **Instrumentation & OTel** | Enforced | OpenTelemetry collector config, telemetry verification | `ep telemetry verify` |
+| **APM & End-to-End Tracing** | Enforced | Traceparent propagation, distributed transaction tracking | `references/deep-observability.md` |
+| **Trace Context Propagation**| Enforced | W3C header checks on remote calls (`RULE-6.7`) | `ep audit` |
+| **Golden Signals / RED / USE**| Enforced | Standard metric types (`latency`, `error_rate`, `saturation`, `traffic`) | `ep slo` |
+| **SLI / SLO / Error Budgets** | Enforced | Zero-dependency SLO YAML validator & error budget calculator | `ep slo` (Gate 10) |
+| **Continuous Profiling** | Optional | Continuous profiling guidance and flame-graph collectors | `references/optional-tooling.md` |
+| **RUM & Synthetic Probes** | Enforced | Scripted health probes, synthetic user load tests | `ep perf` |
+| **Chaos Engineering** | Enforced | Game-day experiment scaffold, plan verification, and runner | `ep chaos scaffold`, `ep chaos verify` |
+| **Load & Stress Testing** | Enforced | Performance runner supporting k6 and Locust harnesses | `ep perf --tool [k6\|locust]` |
+
+### 🛠️ Tooling Guidance Extensions
+| Tooling | Supported Action | CLI Command |
+|---|---|---|
+| **k6 Load Testing** | Multi-stage ramp-up, sustained load & stress spikes | `ep perf --tool k6 --script <path>` |
+| **Locust Load Testing** | Python-based HTTP load testing harness | `ep perf --tool locust --script <path>` |
+| **Chaos Engineering** | Scaffold experiment, verify protocol, run dry-run | `ep chaos [scaffold\|verify\|run]` |
+| **Contract Testing** | Validate OpenAPI 3.x / Protobuf schemas | `ep contract verify [--file <file>]` |
+| **SBOM (Software Bill of Materials)** | Generate CycloneDX/SPDX JSON, verify provenance | `ep sbom [generate\|verify]` |

@@ -138,6 +138,8 @@ Run `python3 scripts/ep.py preflight && python3 scripts/ep.py doctor`.
    - Run `python3 scripts/ep.py verify`.
    - Run branch sync-check: `python3 scripts/ep.py vcs sync-check`.
    - Run full CI verification: `nx affected -t lint,test,build`.
+   - Archive and reset Change Surface: `python3 scripts/ep.py surface archive`.
+   - Commit archival: `git add docs/changes/ CHANGE_SURFACE.md && git commit -m "chore(surface): archive change surface" && git push`.
    - If PR targets `main` and is clean ➔ `gh pr merge --squash --delete-branch`.
    - If PR targets `prod` ➔ run `python3 scripts/ep.py pr create-prod`. **DO NOT MERGE.** Production merges are strictly human-only.
    - If defects persist or branch is protected ➔ attach `needs/review` label and halt.
@@ -196,6 +198,7 @@ ep preflight
 ep surface init [--output CHANGE_SURFACE.md]
 ep surface validate <path>
 ep surface check-diff [--base origin/main]
+ep surface archive [<file>] [--changes-dir docs/changes] [--no-reset]
 
 # Single-Turn Context Ingestion & Anti-Slowness Bundle
 ep pack --surface               # Pack all files declared in active Change Surface into stdout (1 turn)
@@ -215,7 +218,11 @@ ep graph [--format mermaid|json] [--check-boundaries]
 ep audit [--diff origin/main...HEAD | --scope <path>]
 ep doctor [--heal] [--root <monorepo-root>]
 ep migration check [--dir <migrations-dir>]
-ep verify [--root <monorepo-root>] [--heal]
+ep verify [--root <monorepo-root>] [--heal] [--diff <base>] [--surface]
+ep quality [--diff <base>] [--surface] [--scope <path>]
+ep contract verify [--file <path>] [--diff <base>]
+ep sbom generate [--format cyclonedx|spdx]
+ep chaos [--template]
 ep nc check [--max-age 14]
 ep policy
 ep telemetry

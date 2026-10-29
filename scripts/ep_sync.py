@@ -29,9 +29,13 @@ def resolve_default_workspace_dir() -> str:
 
 DEFAULT_WORKSPACE_DIR = resolve_default_workspace_dir()
 
-TRACKED_SUBDIRS = ["scripts", "references", "templates", "tests"]
-TRACKED_ROOT_FILES = ["SKILL.md", "README.md", "package.json", "tsconfig.json"]
-EXCLUDED_PATTERNS = {"__pycache__", ".git", ".ep", ".cache", ".pytest_cache"}
+TRACKED_SUBDIRS = ["scripts", "references", "templates", "tests", "docs", ".github"]
+TRACKED_ROOT_FILES = [
+    "SKILL.md", "README.md", "package.json", "tsconfig.json",
+    "AGENT.md", "CLAUDE.md", ".cursorrules", ".windsurfrules",
+    "CHANGE_SURFACE.md", "PRODUCT_SKILL.md", "project.json", "LICENSE", ".gitignore"
+]
+EXCLUDED_PATTERNS = {"__pycache__", ".git", ".ep", ".cache", ".pytest_cache", ".ruff_cache", ".mypy_cache"}
 
 
 def sha256_file(filepath: str) -> str:
@@ -82,8 +86,31 @@ def sync_trees(source_dir: str, dest_dir: str) -> List[str]:
             src_file = os.path.join(source_dir, rel_path)
             dst_file = os.path.join(dest_dir, rel_path)
             os.makedirs(os.path.dirname(dst_file), exist_ok=True)
-            shutil.copy2(src_file, dst_file)
+            tmp_dst = f"{dst_file}.tmp.{os.getpid()}"
+            shutil.copy2(src_file, tmp_dst)
+            os.replace(tmp_dst, dst_file)
             updated_files.append(rel_path)
+
+    # Prune orphan files in destination that no longer exist in source
+    for rel_path in dest_manifest:
+        if rel_path not in source_manifest:
+            dst_file = os.path.join(dest_dir, rel_path)
+            if os.path.isfile(dst_file):
+                try:
+                    os.remove(dst_file)
+                    updated_files.append(f"[pruned] {rel_path}")
+                except Exception:
+                    pass
+            parent_dir = os.path.dirname(dst_file)
+            while parent_dir and parent_dir != dest_dir and parent_dir.startswith(dest_dir):
+                try:
+                    if not os.listdir(parent_dir):
+                        os.rmdir(parent_dir)
+                        parent_dir = os.path.dirname(parent_dir)
+                    else:
+                        break
+                except Exception:
+                    break
 
     return updated_files
 

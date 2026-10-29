@@ -46,8 +46,8 @@ HEURISTIC_RULES = [
         "id": "RULE-1.5-MUTABLE-GLOBAL-STATE",
         "severity": "suggestion",
         "description": "Mutable global or module-level state detected in request handler or controller; breaks statelessness.",
-        "path_regex": r"(controllers|handlers|api|routes)[\\/].*\.(ts|js|py)$",
-        "content_regex": r"^(?:var|let)\s+(?:sessions?|tokens?|cache|state|users?)\s*=\s*(?:\{|\[)|^(?:sessions?|global_cache|shared_state)\s*=\s*(?:\{|\[)",
+        "path_regex": r"(controllers|handlers|api|routes)[\\/].*\.(ts|js|py|go|rs)$",
+        "content_regex": r"^(?:var|let)\s+(?:sessions?|tokens?|cache|state|users?)\s*=\s*(?:\{|\[)|^(?:sessions?|global_cache|shared_state)\s*=\s*(?:\{|\[)|\bvar\s+[a-zA-Z0-9_]+\s*=\s*(?:make\s*\(\s*(?:map\b|\[)|map\[|\[\])|\bstatic\s+mut\b",
     },
     {
         "dim": 2,
@@ -70,8 +70,8 @@ HEURISTIC_RULES = [
         "id": "RULE-3.7-UNBOUNDED-QUEUE-PREFETCH",
         "severity": "suggestion",
         "description": "Queue consumer prefetch or concurrency configured without bounded limit; risk of OOM under backpressure.",
-        "path_regex": r"(consumers|queues|subscribers|workers)[\\/].*\.(ts|js|py|go|cs)$",
-        "content_regex": r"(prefetch:\s*0\b|noAck:\s*true\b|prefetch_count\s*=\s*0\b|Prefetch\(\s*0\s*\))",
+        "path_regex": r"(consumers|queues|subscribers|workers)[\\/].*\.(ts|js|py|go|cs|rs|php|java)$",
+        "content_regex": r"(prefetch:\s*0\b|noAck:\s*true\b|prefetch_count\s*=\s*0\b|Prefetch\(\s*0\s*\)|(?:\.|->)?basic_?qos\(\s*0\s*(?:,\s*(?:0\b|[^0-9\s])|\))|autoAck\s*[:=]\s*true\b|auto_ack\s*[:=]\s*true\b|rdkafka.*queued\.min\.messages|queued\.min\.messages['\"]?\s*[,:=]\s*['\"]?0)",
     },
     {
         "dim": 3,
@@ -95,7 +95,7 @@ HEURISTIC_RULES = [
         "severity": "blocking",
         "description": "Non-UTC clock or un-timezoned timestamp creation in persistence or domain model; violates Tier 1 UTC convention.",
         "path_regex": r"(domain|models|entities|persistence|db|repositories)[\\/].*\.(ts|js|go|cs|php|py)$",
-        "content_regex": r"(DateTime\.Now\b|datetime\.now\(\)|datetime\.today\(\)|CURRENT_TIMESTAMP\b|TIMESTAMP\s+WITHOUT\s+TIME\s+ZONE)",
+        "content_regex": r"(DateTime\.Now\b|datetime\.now\(\)|datetime\.today\(\)|CURRENT_TIMESTAMP\b|TIMESTAMP\s+WITHOUT\s+TIME\s+ZONE|time\.Now\(\)(?!\.UTC\(\))|\bdate\()",
     },
     {
         "dim": 5,
@@ -110,8 +110,8 @@ HEURISTIC_RULES = [
         "id": "RULE-5.2-RAW-SQL-CONCAT",
         "severity": "blocking",
         "description": "Possible unparameterized SQL string concatenation; risk of injection.",
-        "path_regex": r"(services|apps|libs|packages)[\\/].*\.(ts|js|go|cs|php|py)$",
-        "content_regex": r"(\.raw\(|query\(|execute\(|queryRaw\(|ExecuteSqlRaw\(|SqlQueryRaw\()(['\"].*?\b(SELECT|INSERT|UPDATE|DELETE)\b.*?\s*(\+|%)\s*|\s*f['\"].*?\b(SELECT|INSERT|UPDATE|DELETE)\b|\s*\$['\"].*?\b(SELECT|INSERT|UPDATE|DELETE)\b)",
+        "path_regex": r"(services|apps|libs|packages)[\\/].*\.(ts|js|go|cs|php|py|rs|java)$",
+        "content_regex": r"(\.raw\(|query\(|execute\(|queryRaw\(|ExecuteSqlRaw\(|SqlQueryRaw\()(['\"].*?\b(SELECT|INSERT|UPDATE|DELETE)\b.*?\s*(\+|%)\s*|\s*f['\"].*?\b(SELECT|INSERT|UPDATE|DELETE)\b|\s*\$['\"].*?\b(SELECT|INSERT|UPDATE|DELETE)\b)|sqlx::query(?:_as)?\s*\(\s*&?format!|format!\s*\(\s*[\"']\s*(SELECT|INSERT|UPDATE|DELETE)|\.createNativeQuery\s*\(\s*[\"'].*?\+",
     },
     {
         "dim": 6,
@@ -134,16 +134,48 @@ HEURISTIC_RULES = [
         "id": "RULE-6.7-TRACE-PROPAGATION",
         "severity": "suggestion",
         "description": "Outbound HTTP request detected without traceparent / correlation context header propagation.",
-        "path_regex": r"(clients|gateways|adapters|http)[\\/].*\.(ts|js|py)$",
-        "content_regex": r"(axios\.(get|post|put|delete)\([^,\)]+\)|requests\.(get|post|put|delete)\([^,\)]+\))\s*(?:;|\n|$)",
+        "path_regex": r"(clients|gateways|adapters|http)[\\/].*\.(ts|js|py|go|rs|php|cs|java)$",
+        "content_regex": r"(axios\.(get|post|put|delete)\([^,\)]+\)|requests\.(get|post|put|delete)\([^,\)]+\))\s*(?:;|\n|$)|http\.(?:Get|Post(?:Form)?)\(|reqwest::(?:blocking::)?(?:get|post)|GuzzleHttp\\Client|RestTemplate|WebClient|new\s+HttpClient\b",
+    },
+    {
+        "dim": 7,
+        "id": "RULE-7.1-DIRECT-CROSS-PROJECT-IMPORT",
+        "severity": "blocking",
+        "description": "Illegal direct relative import bypassing package contracts; cross-project boundaries must be crossed via libs/core-contracts",
+        "path_regex": r"(services|apps)[\\/].*\.(ts|tsx|js|jsx|py)$",
+        "content_regex": r"((?:import|export)\s+.*?\s+from\s+['\"](?:\.\.\/)+(?:services|apps)[\\/]|from\s+[\.]{2,}(?:services|apps)\b)",
+    },
+    {
+        "dim": 7,
+        "id": "RULE-7.2-UNVERSIONED-CONTRACT-MUTATION",
+        "severity": "suggestion",
+        "description": "Direct breaking modification of contract schemas without SemVer versioning or deprecation marker",
+        "path_regex": r"(schemas|openapi|proto)[\\/].*\.(yaml|yml|json|proto)$",
+        "content_regex": r"^(?:DELETE|drop|remove)\b",
     },
     {
         "dim": 8,
         "id": "RULE-8.1-EMPTY-CATCH",
         "severity": "blocking",
         "description": "Empty catch block swallowing errors silently without logging or re-throwing.",
-        "path_regex": r"\.(ts|js|cs|php)$",
-        "content_regex": r"catch\s*\([^\)]*\)\s*\{\s*\}",
+        "path_regex": r"\.(ts|js|cs|php|java|kt)$",
+        "content_regex": r"catch\s*(?:\([^\)]*\))?\s*\{\s*\}",
+    },
+    {
+        "dim": 8,
+        "id": "RULE-8.1-EMPTY-CATCH",
+        "severity": "blocking",
+        "description": "Empty catch block swallowing errors silently without logging or re-throwing.",
+        "path_regex": r"\.py$",
+        "content_regex": r"except(?:\s+\w+)?:\s*(?:pass|\.\.\.)",
+    },
+    {
+        "dim": 8,
+        "id": "RULE-8.1-EMPTY-CATCH",
+        "severity": "blocking",
+        "description": "Empty catch block swallowing errors silently without logging or re-throwing.",
+        "path_regex": r"\.go$",
+        "content_regex": r"if\s+err\s*!=\s*nil\s*\{\s*\}",
     },
     {
         "dim": 8,
@@ -167,7 +199,7 @@ HEURISTIC_RULES = [
         "severity": "blocking",
         "description": "Tautological or vacuous test assertion detected.",
         "path_regex": r"(\.(spec|test)|_test|([\\/]|^)test_[^\\/]*|([\\/]|^)tests?[\\/].*)\.(ts|tsx|js|jsx|go|cs|py|rs|dart|java|kt)$",
-        "content_regex": r"(expect\((true|1)\)\.(toBe|toBeTruthy)\((true|1)?\)|assert\.(True|Equal)\(true|assert\s+True\b|assert\s+1\s*==\s*1|self\.assertTrue\(True\)|self\.assertEqual\((True,\s*True|1,\s*1)\))",
+        "content_regex": r"(expect\((true|1)\)\.(toBe|toBeTruthy)\((true|1)?\)|assert\.(True|Equal)\(true|assert\s+True\b|assert\s+1\s*==\s*1|self\.assertTrue\(True\)|self\.assertEqual\((True,\s*True|1,\s*1)\)|(?:assert|require)\.(True|False)\(\s*t\s*,\s*(true|false)\)|(?:assert|require)\.Equal\(\s*t\s*,\s*1\s*,\s*1\))",
     },
     {
         "dim": 10,
@@ -194,6 +226,9 @@ EXCLUDED_DIRS = {
     "fixtures",
     "templates",
     "__pycache__",
+    "obj",
+    "bin",
+    "target",
 }
 
 CODE_EXTENSIONS = {
@@ -225,7 +260,7 @@ def scan_file_for_violations(file_path: str, max_file_lines: int = 800) -> List[
         return findings
 
     # Check file size boundary for production source files
-    is_test_file = bool(re.search(r"(\.(spec|test)\.|[\\/]tests?[\\/]|test_)", norm_path, re.IGNORECASE))
+    is_test_file = bool(re.search(r"(\.(spec|test)\.|[\\/]tests?[\\/]|test_|_test\.(go|rs)$|_test\.)", norm_path, re.IGNORECASE))
     if ext in CODE_EXTENSIONS and not is_test_file and len(lines) > max_file_lines:
         findings.append({
             "dim": 2,

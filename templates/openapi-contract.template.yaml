@@ -1,0 +1,66 @@
+openapi: 3.0.3
+info:
+  title: "{{SERVICE_NAME}} API Contract"
+  version: "1.0.0"
+  description: "Standard contract-first OpenAPI 3.0 specification for EP-OS service."
+paths:
+  /healthz:
+    get:
+      summary: "Liveness and readiness health check probe"
+      responses:
+        '200':
+          description: "Service is healthy and ready to accept traffic"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "ok"
+  /api/v1/resources:
+    get:
+      summary: "List resources with bounded pagination"
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
+      responses:
+        '200':
+          description: "Paginated list of resources"
+    post:
+      summary: "Create resource with required idempotency handling"
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+      responses:
+        '201':
+          description: "Resource created successfully"
+        '400':
+          description: "Bad Request"
+        '409':
+          description: "Conflict / Duplicate Idempotent Request"

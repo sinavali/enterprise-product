@@ -23,60 +23,65 @@ for p in [REPO_ROOT, SCRIPTS_DIR]:
     if p not in sys.path:
         sys.path.insert(0, p)
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
+try:
     from scripts.ep_adopt import cmd_adopt
     from scripts.ep_ast import cmd_ast
     from scripts.ep_context import cmd_pack
     from scripts.ep_doctor import cmd_ci, cmd_doctor, cmd_skill, run_doctor
     from scripts.ep_hooks import cmd_hooks
-    from scripts.ep_ops import cmd_codeowners, cmd_container, cmd_dora, cmd_perf, cmd_slo
-    from scripts.ep_runner import cmd_run, cmd_run_many
-    from scripts.ep_scaffold import cmd_init, cmd_manifest, cmd_preflight, cmd_worktree
-    from scripts.ep_security import cmd_iac, cmd_license, cmd_security
+    from scripts.ep_ops import cmd_codeowners, cmd_container, cmd_dora, cmd_finops, cmd_perf, cmd_slo, cmd_telemetry
+    from scripts.ep_quality import cmd_quality, run_enterprise_verify
+    from scripts.ep_runner import cmd_graph, cmd_run, cmd_run_many
+    from scripts.ep_scaffold import archive_change_surface, cmd_init, cmd_manifest, cmd_preflight, cmd_worktree, is_surface_unpopulated
+    from scripts.ep_security import cmd_iac, cmd_license, cmd_policy, cmd_security
     from scripts.ep_session import cmd_session
     from scripts.ep_stack import STACK_DEFINITIONS, detect_stack
     from scripts.ep_sync import cmd_sync_skill
+    from scripts.ep_tooling import cmd_chaos, cmd_contract, cmd_sbom
     from scripts.ep_vcs import BaseGitProvider, GitHubProvider, GitLabProvider, LocalGitProvider, cmd_pr, cmd_vcs, get_git_provider
-else:
-    try:
-        from scripts.ep_adopt import cmd_adopt
-        from scripts.ep_ast import cmd_ast
-        from scripts.ep_context import cmd_pack
-        from scripts.ep_doctor import cmd_ci, cmd_doctor, cmd_skill, run_doctor
-        from scripts.ep_hooks import cmd_hooks
-        from scripts.ep_ops import cmd_codeowners, cmd_container, cmd_dora, cmd_perf, cmd_slo
-        from scripts.ep_runner import cmd_run, cmd_run_many
-        from scripts.ep_scaffold import cmd_init, cmd_manifest, cmd_preflight, cmd_worktree
-        from scripts.ep_security import cmd_iac, cmd_license, cmd_security
-        from scripts.ep_session import cmd_session
-        from scripts.ep_stack import STACK_DEFINITIONS, detect_stack
-        from scripts.ep_sync import cmd_sync_skill
-        from scripts.ep_vcs import BaseGitProvider, GitHubProvider, GitLabProvider, LocalGitProvider, cmd_pr, cmd_vcs, get_git_provider
-    except ImportError:
-        from ep_adopt import cmd_adopt
-        from ep_ast import cmd_ast
-        from ep_context import cmd_pack
-        from ep_doctor import cmd_ci, cmd_doctor, cmd_skill, run_doctor
-        from ep_hooks import cmd_hooks
-        from ep_ops import cmd_codeowners, cmd_container, cmd_dora, cmd_perf, cmd_slo
-        from ep_runner import cmd_run, cmd_run_many
-        from ep_scaffold import cmd_init, cmd_manifest, cmd_preflight, cmd_worktree
-        from ep_security import cmd_iac, cmd_license, cmd_security
-        from ep_session import cmd_session
-        from ep_stack import STACK_DEFINITIONS, detect_stack
-        from ep_sync import cmd_sync_skill
-        from ep_vcs import BaseGitProvider, GitHubProvider, GitLabProvider, LocalGitProvider, cmd_pr, cmd_vcs, get_git_provider
+except ImportError:
+    from ep_adopt import cmd_adopt  # type: ignore[import-not-found,no-redef]
+    from ep_ast import cmd_ast  # type: ignore[import-not-found,no-redef]
+    from ep_context import cmd_pack  # type: ignore[import-not-found,no-redef]
+    from ep_doctor import cmd_ci, cmd_doctor, cmd_skill, run_doctor  # type: ignore[import-not-found,no-redef]
+    from ep_hooks import cmd_hooks  # type: ignore[import-not-found,no-redef]
+    from ep_ops import cmd_codeowners, cmd_container, cmd_dora, cmd_finops, cmd_perf, cmd_slo, cmd_telemetry  # type: ignore[import-not-found,no-redef]
+    from ep_quality import cmd_quality, run_enterprise_verify  # type: ignore[import-not-found,no-redef]
+    from ep_runner import cmd_graph, cmd_run, cmd_run_many  # type: ignore[import-not-found,no-redef]
+    from ep_scaffold import archive_change_surface, cmd_init, cmd_manifest, cmd_preflight, cmd_worktree, is_surface_unpopulated  # type: ignore[import-not-found,no-redef]
+    from ep_security import cmd_iac, cmd_license, cmd_policy, cmd_security  # type: ignore[import-not-found,no-redef]
+    from ep_session import cmd_session  # type: ignore[import-not-found,no-redef]
+    from ep_stack import STACK_DEFINITIONS, detect_stack  # type: ignore[import-not-found,no-redef]
+    from ep_sync import cmd_sync_skill  # type: ignore[import-not-found,no-redef]
+    from ep_tooling import cmd_chaos, cmd_contract, cmd_sbom  # type: ignore[import-not-found,no-redef]
+    from ep_vcs import BaseGitProvider, GitHubProvider, GitLabProvider, LocalGitProvider, cmd_pr, cmd_vcs, get_git_provider  # type: ignore[import-not-found,no-redef]
+
+def _resolve_change_surface(target_file: str) -> str:
+    needs_fallback = False
+    if not os.path.exists(target_file):
+        needs_fallback = True
+    elif target_file == "CHANGE_SURFACE.md" or os.path.basename(target_file) == "CHANGE_SURFACE.md":
+        try:
+            with open(target_file, "r", encoding="utf-8") as f:
+                c = f.read()
+            if is_surface_unpopulated(c):
+                needs_fallback = True
+        except Exception:
+            needs_fallback = True
+    if needs_fallback and os.path.exists("docs/changes"):
+        changes = sorted(
+            [os.path.join("docs/changes", f) for f in os.listdir("docs/changes") if f.endswith(".md")],
+            key=lambda p: (os.path.getmtime(p), p),
+        )
+        if changes:
+            return changes[-1]
+    return target_file
 
 
-# ==============================================================================
-# SUBCOMMAND: surface (Change Surface Validator & Blast-Radius Gate)
-# ==============================================================================
-
+# --- Subcommand: surface (Change Surface Validator & Blast-Radius Gate) ---
 def cmd_surface(args: argparse.Namespace) -> int:
     if args.action == "validate":
-        target_file = getattr(args, "output", None) or getattr(args, "surface_file", None) or args.file or "CHANGE_SURFACE.md"
+        target_file = _resolve_change_surface(getattr(args, "output", None) or getattr(args, "surface_file", None) or args.file or "CHANGE_SURFACE.md")
         if not os.path.exists(target_file):
             print(f"[ERROR] Change Surface file '{target_file}' not found.", file=sys.stderr)
             return 1
@@ -87,13 +92,7 @@ def cmd_surface(args: argparse.Namespace) -> int:
 
     elif args.action == "check-diff":
         base_branch = args.base or "origin/main"
-        target_file = getattr(args, "output", None) or getattr(args, "surface_file", None) or args.file or "CHANGE_SURFACE.md"
-
-        if not os.path.exists(target_file):
-            if os.path.exists("docs/changes"):
-                changes = sorted([os.path.join("docs/changes", f) for f in os.listdir("docs/changes") if f.endswith(".md")], key=lambda p: os.path.getmtime(p))
-                if changes:
-                    target_file = changes[-1]
+        target_file = _resolve_change_surface(getattr(args, "output", None) or getattr(args, "surface_file", None) or args.file or "CHANGE_SURFACE.md")
 
         if not os.path.exists(target_file):
             print(f"[ERROR] No Change Surface artifact found to verify against git diff.", file=sys.stderr)
@@ -109,6 +108,16 @@ def cmd_surface(args: argparse.Namespace) -> int:
 
         surface_text = code_surface_match.group(0)
         declared_paths = set(re.findall(r"[`']([a-zA-Z0-9_\-./\[\]]+)[`']", surface_text))
+        if os.path.exists("docs/changes"):
+            for arc in os.listdir("docs/changes"):
+                if arc.endswith(".md"):
+                    try:
+                        with open(os.path.join("docs/changes", arc), "r", encoding="utf-8") as af:
+                            m = re.search(r"## 3\.\s*Code Surface.*?(?=## 4\.\s*Test Surface|\Z)", af.read(), re.DOTALL | re.IGNORECASE)
+                            if m:
+                                declared_paths.update(re.findall(r"[`']([a-zA-Z0-9_\-./\[\]]+)[`']", m.group(0)))
+                    except Exception:
+                        pass
 
         try:
             if "..." in base_branch or base_branch in ("HEAD", "HEAD~1"):
@@ -141,7 +150,7 @@ def cmd_surface(args: argparse.Namespace) -> int:
         out_of_bounds = []
 
         for m_file in modified_files:
-            if m_file.endswith(exempt_suffixes) or m_file.startswith("docs/") or m_file == "CHANGE_SURFACE.md":
+            if m_file.endswith(exempt_suffixes) or m_file.startswith(("docs/", ".ep/", ".git/")) or m_file in ("CHANGE_SURFACE.md", ".gitignore"):
                 continue
 
             covered = False
@@ -163,9 +172,25 @@ def cmd_surface(args: argparse.Namespace) -> int:
         print(f"[OK] Blast-Radius Clean: All {len(modified_files)} modified files are strictly within declared Change Surface.")
         return 0
 
+    elif args.action == "archive":
+        target_file = getattr(args, "output", None) or getattr(args, "surface_file", None) or args.file or "CHANGE_SURFACE.md"
+        changes_dir = getattr(args, "changes_dir", "docs/changes") or "docs/changes"
+        no_reset = getattr(args, "no_reset", False)
+        ok, arc_res = archive_change_surface(target_file, changes_dir=changes_dir, reset_root=not no_reset)
+        if not ok:
+            print(f"[WARN] Change Surface archival: {arc_res}")
+            return 0
+        print(f"[OK] Change Surface archived to '{arc_res}' and active surface reset.")
+        return 0
+
     elif args.action == "init":
         target_file = getattr(args, "output", None) or getattr(args, "surface_file", None) or args.file or "CHANGE_SURFACE.md"
         base_branch = getattr(args, "base", "origin/main") or "origin/main"
+
+        if os.path.exists(target_file):
+            ok_arc, arc_path = archive_change_surface(target_file, reset_root=False)
+            if ok_arc:
+                print(f"[INFO] Auto-archived previous populated surface to '{arc_path}'.")
 
         diff_target = base_branch if ("..." in base_branch or base_branch in ("HEAD", "HEAD~1")) else f"{base_branch}...HEAD"
         res_diff = subprocess.run(["git", "diff", "--name-only", diff_target], capture_output=True, text=True, check=False, timeout=30)
@@ -218,11 +243,7 @@ def cmd_surface(args: argparse.Namespace) -> int:
 
     return 0
 
-
-# ==============================================================================
-# SUBCOMMAND: migration (Expand/Contract Static DDL Scanner)
-# ==============================================================================
-
+# --- Subcommand: migration (Expand/Contract Static DDL Scanner) ---
 DESTRUCTIVE_DDL_PATTERNS = [
     (r"\bDROP\s+COLUMN\b", "DROP COLUMN detected. Breaking schema alteration violates Expand/Contract (Phase 1-4)."),
     (r"\bRENAME\s+COLUMN\b", "RENAME COLUMN detected. Instant rename breaks rolling deployments. Use dual-write Expand/Contract."),
@@ -291,100 +312,10 @@ def cmd_migration(args: argparse.Namespace) -> int:
     return 0
 
 
-# ==============================================================================
-# SUBCOMMAND: graph (Native Mermaid Topology Generator)
-# ==============================================================================
-
-def cmd_graph(args: argparse.Namespace) -> int:
-    root_dir = args.root or "."
-
-    if getattr(args, "check_boundaries", False):
-        print("=== EP-OS Architectural Boundary Integrity Check ===")
-        violations = []
-        for cur_root, dirs, files in os.walk(root_dir):
-            dirs[:] = [d for d in dirs if d not in {"node_modules", ".git", ".nx", "dist", "build"} and not d.startswith(".")]
-            norm_cur = cur_root.replace("\\", "/")
-            is_domain = "/domain" in norm_cur or norm_cur.endswith("/domain")
-            for f in files:
-                if f.endswith((".ts", ".js", ".go", ".py", ".rs", ".php")):
-                    f_path = os.path.join(cur_root, f)
-                    try:
-                        with open(f_path, "r", encoding="utf-8", errors="ignore") as fh:
-                            fc = fh.read()
-                        if is_domain:
-                            if re.search(r"(from ['\"](typeorm|prisma|sequelize|gorm|sqlalchemy|django\.db)['\"]|import .*gorm|org\.hibernate)", fc):
-                                violations.append((f_path, "Domain layer imports ORM/persistence framework"))
-                        if "/libs/" in norm_cur or "/packages/" in norm_cur:
-                            if re.search(r"from ['\"].*(apps|services)/", fc):
-                                violations.append((f_path, "Library/shared package imports application or service code"))
-                    except Exception:
-                        pass
-        if violations:
-            print("[FAIL] Architectural Boundary Violations Detected!", file=sys.stderr)
-            for f_path, reason in violations:
-                print(f"  ❌ {f_path}: {reason}", file=sys.stderr)
-            return 1
-        print("[OK] Architectural Boundary Integrity Verified. Zero illegal imports detected.")
-        return 0
-
-    projects = []
-    for current_root, dirs, files in os.walk(root_dir):
-        dirs[:] = [d for d in dirs if d not in {"node_modules", ".git", ".nx", "dist", "build"} and not d.startswith(".")]
-        if "project.json" in files:
-            p_file = os.path.join(current_root, "project.json")
-            try:
-                with open(p_file, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    name = data.get("name", os.path.basename(current_root))
-                    tags = data.get("tags", [])
-                    profile = "Unknown"
-                    scope = "General"
-                    for t in tags:
-                        if t.startswith("profile:"):
-                            profile = t.split(":", 1)[1].upper()
-                        elif t.startswith("scope:"):
-                            scope = t.split(":", 1)[1]
-                    projects.append({
-                        "name": name,
-                        "path": current_root,
-                        "profile": profile,
-                        "scope": scope,
-                    })
-            except Exception:
-                pass
-
-    if args.format == "json":
-        print(json.dumps(projects, indent=2))
-        return 0
-
-    print("```mermaid\nflowchart TD\n    subgraph Enterprise Product Monorepo")
-    profiles = {"A": "Profile A (Backend & Core Services)", "B": "Profile B (Web Applications)", "C": "Profile C (Mobile Clients)", "D": "Profile D (Shared Contracts & Libs)"}
-    for prof_key, prof_label in profiles.items():
-        matching = [p for p in projects if p["profile"] == prof_key]
-        if matching:
-            print(f'        subgraph P_{prof_key}["{prof_label}"]')
-            for p in matching:
-                p_id = re.sub(r"[^a-zA-Z0-9_]", "_", p["name"])
-                print(f'            {p_id}["{p["name"]} ({p["scope"]})"]')
-            print("        end")
-
-    for d in [p for p in projects if p["profile"] == "D"]:
-        d_id = re.sub(r"[^a-zA-Z0-9_]", "_", d["name"])
-        for o in [p for p in projects if p["profile"] != "D"]:
-            o_id = re.sub(r"[^a-zA-Z0-9_]", "_", o["name"])
-            print(f"    {d_id} -.-> {o_id}")
-
-    print("    end\n```")
-    return 0
-
-
-# ==============================================================================
-# SUBCOMMAND: release & milestone (SemVer & Release Governance)
-# ==============================================================================
-
+# --- Subcommand: release & milestone (SemVer & Release Governance) ---
 def cmd_release(args: argparse.Namespace) -> int:
     action = args.action
-    version = getattr(args, "version", None)
+    version = getattr(args, "version", None) or getattr(args, "version_flag", None)
 
     if action == "create":
         if not version or not re.match(r"^v?\d+\.\d+\.\d+", version):
@@ -400,26 +331,55 @@ def cmd_release(args: argparse.Namespace) -> int:
         return 0
     elif action == "finalize":
         cur_branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, check=False, timeout=10).stdout.strip()
+        is_prod = getattr(args, "prod", False) or cur_branch == "prod"
+        version_label = version
         today_str = datetime.date.today().isoformat()
         rel_dir = "docs/releases"
         os.makedirs(rel_dir, exist_ok=True)
-        rel_file = os.path.join(rel_dir, f"RELEASE_{today_str}.md")
+        rel_filename = f"RELEASE_{version_label}.md" if version_label else f"RELEASE_{today_str}.md"
+        rel_file = os.path.join(rel_dir, rel_filename)
         changes_dir = "docs/changes"
         summaries = []
+
+        # Scope changes to files in docs/changes/ created since previous git tag
+        res_tag = subprocess.run(["git", "describe", "--tags", "--abbrev=0"], capture_output=True, text=True, check=False, timeout=10)
+        prev_tag = res_tag.stdout.strip() if res_tag.returncode == 0 else None
+
+        scoped_files = set()
+        if prev_tag:
+            res_diff = subprocess.run(["git", "diff", "--name-only", "--diff-filter=AM", f"{prev_tag}..HEAD", "--", changes_dir], capture_output=True, text=True, check=False, timeout=10)
+            if res_diff.returncode == 0:
+                for f in res_diff.stdout.splitlines():
+                    if f.strip().endswith(".md"):
+                        scoped_files.add(os.path.basename(f.strip()))
+            res_status = subprocess.run(["git", "status", "--porcelain", "--", changes_dir], capture_output=True, text=True, check=False, timeout=10)
+            if res_status.returncode == 0:
+                for line in res_status.stdout.splitlines():
+                    if len(line) >= 4:
+                        p = line[3:].strip()
+                        if " -> " in p:
+                            p = p.split(" -> ")[1].strip()
+                        if p.endswith(".md"):
+                            scoped_files.add(os.path.basename(p))
+
         if os.path.exists(changes_dir):
             for cf in sorted(os.listdir(changes_dir)):
                 if cf.endswith(".md"):
-                    with open(os.path.join(changes_dir, cf), "r", encoding="utf-8", errors="ignore") as fh:
-                        summaries.append(f"### {cf}\n\n" + fh.read())
+                    if not prev_tag or (scoped_files and cf in scoped_files):
+                        with open(os.path.join(changes_dir, cf), "r", encoding="utf-8", errors="ignore") as fh:
+                            summaries.append(f"### {cf}\n\n" + fh.read())
+
+        header_title = f"Production Release Notes: {version_label or today_str}" if is_prod else f"Release Notes: {version_label or today_str}"
         rel_content = (
-            f"# Production Release Notes: {today_str}\n\n- **Date**: `{today_str}`\n- **Branch**: `{cur_branch}`\n"
+            f"# {header_title}\n\n- **Date**: `{today_str}`\n- **Branch**: `{cur_branch}`\n"
+            f"- **Production**: `{is_prod}`\n"
             f"- **Change Surfaces Included**: `{len(summaries)}`\n\n## Change Summaries\n\n"
             + ("\n\n---\n\n".join(summaries) if summaries else "_No individual Change Surface files recorded._\n")
         )
         with open(rel_file, "w", encoding="utf-8") as fh:
             fh.write(rel_content)
         print(f"[OK] Generated release notes at '{rel_file}'.")
-        print(f"[OK] Finalized production release progression on branch '{cur_branch}'.")
+        print(f"[OK] Finalized release progression on branch '{cur_branch}'.")
         return 0
     return 0
 
@@ -472,11 +432,7 @@ def cmd_milestone(args: argparse.Namespace) -> int:
         return 0
     return 0
 
-
-# ==============================================================================
-# MAIN DISPATCHER
-# ==============================================================================
-
+# --- Subcommand: main dispatcher ---
 def main():
     parser = argparse.ArgumentParser(
         prog="ep",
@@ -485,8 +441,8 @@ def main():
     subparsers = parser.add_subparsers(dest="subcommand", help="Operational subcommands")
 
     # surface
-    p_surface = subparsers.add_parser("surface", help="Change Surface validation and blast-radius bounding")
-    p_surface.add_argument("action", choices=["validate", "check-diff", "init"], help="Action to perform")
+    p_surface = subparsers.add_parser("surface", help="Change Surface validation, blast-radius bounding, and archival")
+    p_surface.add_argument("action", choices=["validate", "check-diff", "init", "archive"], help="Action to perform")
     p_surface.add_argument("file", nargs="?", default=None, help="Path to CHANGE_SURFACE markdown file")
     p_surface.add_argument("--surface-file", dest="surface_file", default=None, help="Path to CHANGE_SURFACE markdown file")
     p_surface.add_argument("--output", dest="output", default=None, help="Path to CHANGE_SURFACE markdown file (alias)")
@@ -494,6 +450,8 @@ def main():
     p_surface.add_argument("--strict", action="store_true", help="Disallow template placeholders")
     p_surface.add_argument("--scope", default=None, help="Project scope hint")
     p_surface.add_argument("--title", default=None, help="Change Surface title")
+    p_surface.add_argument("--changes-dir", default="docs/changes", help="Directory for archived Change Surfaces")
+    p_surface.add_argument("--no-reset", action="store_true", help="Do not reset active Change Surface to template")
 
     # migration
     p_mig = subparsers.add_parser("migration", help="Zero-Downtime Expand/Contract migration linter")
@@ -554,6 +512,7 @@ def main():
     p_rel = subparsers.add_parser("release", help="Hybrid Dual-Tier SemVer and release management")
     p_rel.add_argument("action", choices=["create", "finalize"], help="Release action")
     p_rel.add_argument("version", nargs="?", default=None, help="Target release version")
+    p_rel.add_argument("--version", dest="version_flag", default=None, help="Target release version (alias)")
     p_rel.add_argument("--prod", action="store_true", help="Finalize production release")
 
     # milestone
@@ -573,6 +532,8 @@ def main():
     p_verify = subparsers.add_parser("verify", help="Run parallel mechanical gatekeeper suite")
     p_verify.add_argument("--root", default=".", help="Root directory to scan")
     p_verify.add_argument("--heal", action="store_true", help="Autonomously heal missing prerequisites before verifying")
+    p_verify.add_argument("--diff", nargs="?", const="origin/main", help="Run verification scoped to git diff (fast-path)")
+    p_verify.add_argument("--surface", action="store_true", help="Run verification scoped to active Change Surface (fast-path)")
 
     p_nc = subparsers.add_parser("nc", help="Audit NEED_CLARIFICATION items for expiration")
     p_nc.add_argument("action", choices=["check"], help="Action to perform")
@@ -634,6 +595,8 @@ def main():
     p_ast.add_argument("pattern", nargs="?", default="", help="Structural pattern to search for")
     p_ast.add_argument("--scope", default=".", help="Directory or file path to inspect")
     p_ast.add_argument("--lang", default=None, help="Target language (typescript, python, go, rust, php)")
+    p_ast.add_argument("--diff", nargs="?", const="origin/main", help="Scan git diff files")
+    p_ast.add_argument("--surface", action="store_true", help="Scan active Change Surface files")
 
     # run
     p_run = subparsers.add_parser("run", help="Execute single project target in topological dependency order")
@@ -650,6 +613,7 @@ def main():
 
     # iac
     p_iac = subparsers.add_parser("iac", help="Infrastructure as Code (IaC) container & orchestration security gate")
+    p_iac.add_argument("action", nargs="?", default="verify", choices=["verify", "scan"], help="IaC action")
     p_iac.add_argument("--dir", default=".", help="Directory to scan")
 
     # slo
@@ -665,8 +629,9 @@ def main():
     p_dora.add_argument("--days", type=int, default=30, help="Number of days of history to analyze")
 
     # perf
-    p_perf = subparsers.add_parser("perf", help="Run standard k6 performance and stress tests")
-    p_perf.add_argument("--script", default=None, help="Path to k6 test script")
+    p_perf = subparsers.add_parser("perf", help="Run standard k6 or locust performance and stress tests")
+    p_perf.add_argument("--tool", default=None, choices=["k6", "locust"], help="Performance test engine")
+    p_perf.add_argument("--script", default=None, help="Path to test script")
     p_perf.add_argument("--target-url", default=None, help="Base target URL")
     p_perf.add_argument("--vus", type=int, default=10, help="Virtual users")
     p_perf.add_argument("--duration", default="10s", help="Duration string")
@@ -685,6 +650,7 @@ def main():
     p_pack.add_argument("--scope", help="Directory scope to pack")
     p_pack.add_argument("--output", help="Output file path (default stdout)")
     p_pack.add_argument("--max-lines", type=int, default=800, help="Max lines per file")
+    p_pack.add_argument("--summary", action="store_true", help="Include task context summary at top of bundle")
     p_pack.add_argument("--root", default=".", help="Monorepo root")
 
     # doctor (prerequisite audit and autonomous healing)
@@ -703,6 +669,36 @@ def main():
     p_ci.add_argument("action", nargs="?", default="init", choices=["init"], help="CI action")
     p_ci.add_argument("--platform", default="github", choices=["github", "gitlab"], help="CI platform")
     p_ci.add_argument("--root", default=".", help="Monorepo root")
+
+    # quality (production-readiness quality gates)
+    p_qual = subparsers.add_parser("quality", help="Enterprise production quality & idempotency gates")
+    p_qual.add_argument("action", nargs="?", default="check", choices=["check"], help="Quality action")
+    p_qual.add_argument("--diff", nargs="?", const="origin/main", help="Scope checks to git diff")
+    p_qual.add_argument("--surface", action="store_true", help="Scope checks to active Change Surface")
+    p_qual.add_argument("--root", default=".", help="Monorepo root")
+    p_qual.add_argument("--json", action="store_true", help="Output findings as JSON")
+
+    # chaos (chaos engineering experiment runner)
+    p_chaos = subparsers.add_parser("chaos", help="Chaos engineering experiment management & verification")
+    p_chaos.add_argument("action", nargs="?", default="verify", choices=["scaffold", "verify", "run"], help="Chaos action")
+    p_chaos.add_argument("name", nargs="?", default=None, help="Experiment name")
+    p_chaos.add_argument("--file", default=None, help="Chaos experiment plan file")
+    p_chaos.add_argument("--service", default=None, help="Target service name")
+    p_chaos.add_argument("--dry-run", action="store_true", help="Dry run simulation")
+
+    # contract (API & schema contract verification)
+    p_contract = subparsers.add_parser("contract", help="API and schema contract testing & compatibility verification")
+    p_contract.add_argument("action", nargs="?", default="verify", choices=["verify", "lint"], help="Contract action")
+    p_contract.add_argument("--dir", default=None, help="Directory containing schemas")
+    p_contract.add_argument("--file", default=None, help="Specific schema file")
+    p_contract.add_argument("--diff", nargs="?", const="origin/main", help="Verify contract changes against base")
+
+    # sbom (Software Bill of Materials)
+    p_sbom = subparsers.add_parser("sbom", help="Software Bill of Materials (SBOM) generator and validator")
+    p_sbom.add_argument("action", nargs="?", default="generate", choices=["generate", "verify"], help="SBOM action")
+    p_sbom.add_argument("--output", default="sbom.json", help="Output SBOM file path")
+    p_sbom.add_argument("--format", choices=["cyclonedx", "spdx"], default="cyclonedx", help="SBOM format")
+    p_sbom.add_argument("--file", default=None, help="SBOM file to verify")
 
     args = parser.parse_args()
 
@@ -727,50 +723,20 @@ def main():
             cmd.append("--json")
         return subprocess.run(cmd, timeout=300).returncode
 
-    def run_verify(a: argparse.Namespace) -> int:
-        root_dir = getattr(a, "root", ".") or "."
-        if getattr(a, "heal", False):
-            run_doctor(root_dir=root_dir, heal=True)
-        print("=== 1. Verifying Nx Target Contracts ===")
-        nx_res = subprocess.run([sys.executable, os.path.join(SCRIPTS_DIR, "verify-nx-targets.py"), "--root", root_dir], timeout=30).returncode
-
-        print("\n=== 2. Linting AGENT.md Manifests ===")
-        agent_res = subprocess.run([sys.executable, os.path.join(SCRIPTS_DIR, "verify-agent-manifests.py"), "--root", root_dir], timeout=30).returncode
-
-        print("\n=== 3. Checking Open NC Item Expiration ===")
-        nc_dir = os.path.join(root_dir, "docs/nc")
-        if os.path.exists(nc_dir):
-            nc_res = subprocess.run([sys.executable, os.path.join(SCRIPTS_DIR, "check-nc-items.py"), "--dir", nc_dir, "--max-age", "14"], timeout=30).returncode
-        else:
-            print("[INFO] No docs/nc directory found under root. 0 open NC items.")
-            nc_res = 0
-
-        print("\n=== 4. Checking Expand/Contract Database Migrations ===")
-        mig_res = cmd_migration(argparse.Namespace(dir=root_dir, diff=False, base="origin/main"))
-
-        print("\n=== 5. Scanning for Hardcoded Secrets ===")
-        sec_res = cmd_security(argparse.Namespace(action="scan", dir=root_dir, staged=False, diff=None))
-
-        print("\n=== 6. Checking Change Surface Compliance ===")
-        surf_res = cmd_surface(argparse.Namespace(action="check-diff", file=None, surface_file=None, output=None, base="origin/main", strict=False))
-
-        return 0 if (nx_res == 0 and agent_res == 0 and nc_res == 0 and mig_res == 0 and sec_res == 0 and surf_res == 0) else 1
-
     dispatch = {
         "surface": cmd_surface, "migration": cmd_migration, "graph": cmd_graph,
         "init": cmd_init, "worktree": cmd_worktree, "vcs": cmd_vcs, "pr": cmd_pr,
         "session": cmd_session, "manifest": cmd_manifest, "preflight": cmd_preflight,
         "release": cmd_release, "milestone": cmd_milestone, "audit": run_audit,
-        "verify": run_verify,
+        "verify": run_enterprise_verify,
         "nc": lambda a: subprocess.run([sys.executable, os.path.join(SCRIPTS_DIR, "check-nc-items.py"), "--max-age", str(a.max_age)], timeout=30).returncode,
         "hooks": cmd_hooks, "security": cmd_security, "license": cmd_license, "adopt": cmd_adopt,
-        "telemetry": lambda a: (print("[OK] Telemetry: Traceparent headers conform to OpenTelemetry schema."), 0)[1],
-        "finops": lambda a: (print("[OK] FinOps: Resource quota limits verified across manifests."), 0)[1],
-        "policy": lambda a: (print("[OK] Policy: Zero policy violations detected across governance rules."), 0)[1],
+        "telemetry": cmd_telemetry, "finops": cmd_finops, "policy": cmd_policy,
         "sync-skill": cmd_sync_skill, "ast": cmd_ast, "run": cmd_run, "run-many": cmd_run_many,
         "iac": cmd_iac, "slo": cmd_slo, "codeowners": cmd_codeowners, "dora": cmd_dora,
         "perf": cmd_perf, "container": cmd_container, "pack": cmd_pack, "context": cmd_pack,
-        "doctor": cmd_doctor, "skill": cmd_skill, "ci": cmd_ci,
+        "doctor": cmd_doctor, "skill": cmd_skill, "ci": cmd_ci, "quality": cmd_quality,
+        "chaos": cmd_chaos, "contract": cmd_contract, "sbom": cmd_sbom,
     }
     if args.subcommand in dispatch:
         sys.exit(dispatch[args.subcommand](args))
