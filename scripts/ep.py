@@ -381,6 +381,12 @@ def cmd_release(args: argparse.Namespace) -> int:
         print(f"[OK] Generated release notes at '{rel_file}'.")
         print(f"[OK] Finalized release progression on branch '{cur_branch}'.")
         return 0
+    elif action == "pack":
+        try:
+            from scripts.ep_vcs import pack_release
+        except ImportError:
+            from ep_vcs import pack_release  # type: ignore[import-not-found,no-redef]
+        return pack_release(args)
     return 0
 
 
@@ -510,10 +516,12 @@ def main():
 
     # release
     p_rel = subparsers.add_parser("release", help="Hybrid Dual-Tier SemVer and release management")
-    p_rel.add_argument("action", choices=["create", "finalize"], help="Release action")
+    p_rel.add_argument("action", choices=["create", "finalize", "pack"], help="Release action")
     p_rel.add_argument("version", nargs="?", default=None, help="Target release version")
     p_rel.add_argument("--version", dest="version_flag", default=None, help="Target release version (alias)")
     p_rel.add_argument("--prod", action="store_true", help="Finalize production release")
+    p_rel.add_argument("--output", "-o", default="Packed.zip", help="Output path for packed release zip binary (default: Packed.zip)")
+    p_rel.add_argument("--max-files", type=int, default=30, help="Maximum allowed file count in release package (default: 30)")
 
     # milestone
     p_ms = subparsers.add_parser("milestone", help="Milestone tracking and objectives")

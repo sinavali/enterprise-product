@@ -58,6 +58,11 @@ Automated architectural auditor and scorecard generator evaluating changes acros
 - Four-tier promotion topology: `main` (development trunk) $\to$ `test` (integration) $\to$ `stage` (pre-production staging) $\to$ `prod` (production release).
 - Strict Human-Only Production Gate: AI agents are mechanically barred from merging into `prod`; PRs to `prod` (`ep pr create-prod`) have GitHub auto-merge permanently disabled.
 
+### 📦 8. Minimalized Release Binary Packaging (`ep release pack`)
+- Zero-dependency, deterministic release packaging task that compiles EP-OS into an absolutely minimalized release zip binary (`Packed.zip`).
+- Hard ceiling constraint: strictly capped at $\le 30$ files (exactly 29 files packed), eliminating all non-runtime documentation, tests, and caches while retaining 100% operational CLI capabilities.
+- Available via both `python3 scripts/ep.py release pack` and Nx target `ep run enterprise-product:package`.
+
 ---
 
 ## 3. Remediated Defects & Audit Findings

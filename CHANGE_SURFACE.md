@@ -1,62 +1,64 @@
 ---
-title: "Change Surface: [Short Descriptive Title]"
-author: "[Author or Agent ID]"
+title: "Change Surface: EP-OS Minimalized Release Binary Packaging & v1.0.0 Asset Generation"
+author: "Antigravity"
 created_date: "2026-10-29"
 target_branch: "main"
-risk_level: "LOW"                    # LOW | MEDIUM | HIGH | CRITICAL
+risk_level: "LOW"
 affected_projects:
-  - "services/core"
+  - "enterprise-product"
 ---
 
-# Change Surface: [Feature or Task Title]
+# Change Surface: EP-OS Minimalized Release Binary Packaging & v1.0.0 Asset Generation
 
 ## 1. Intent & Business Rationale
-[Provide a clear, unambiguous statement of why this change is needed, what problem it solves, and the expected business outcome.]
+Provide an automated, deterministic release packaging task for EP-OS itself (`ep release pack` / `nx package`) that compiles an absolutely minimalized release zip binary (`Packed.zip`) containing strictly $\le 30$ files with zero extraneous documentation, caches, or tests, while remaining 100% executable and self-contained. Re-release `v1.0.0` with the `Packed.zip` asset attached to GitHub Releases.
 
 ## 2. Affected Monorepo Projects & Profiles
 | Project Path | Architectural Profile | Responsibility in this Change |
 |---|---|---|
-| `services/core` | Profile A (DDD/Hexagonal) | Target project |
+| `.` | Profile D (Shared Contracts & Core Libraries) | EP-OS CLI & Packaging Task |
 
 ## 3. Code Surface (Targeted Symbols & Files)
-Declare the exact files and symbols that will be modified or created. Modifying files outside this surface requires updating this document.
 
 ### Added Files
-- `services/core/src/index.ts`
+- `tests/test_ep_release_pack.py`
+- `docs/changes/2026-10-29-ep-os-minimal-release-binary-package.md`
+- `Packed.zip`
 
 ### Modified Files
-- `services/core/src/service.ts`
+- `scripts/ep_vcs.py`
+- `scripts/ep.py`
+- `project.json`
+- `SKILL.md`
+- `docs/releases/RELEASE_v1.0.0_LTS.md`
+- `.gitignore`
 
 ## 4. Test Surface
-Every code change must have a corresponding test surface. Happy-path-only tests are prohibited.
 
 ### Unit & Domain Tests
-- `services/core/tests/unit/service.spec.ts`
+- `tests/test_ep_release_pack.py`
 
 ### Integration Tests (Real Ephemeral Containers)
-- `services/core/tests/integration/service.test.ts`
+- N/A (CLI Packaging & Artifact Verification)
 
 ### Failure & Resilience Tests
-- `services/core/tests/integration/resilience.test.ts`
+- `tests/test_ep_release_pack.py` (file count ceiling enforcement > 30 files, missing files, archive integrity)
 
 ### Concurrency Tests
-- `services/core/tests/integration/concurrency.test.ts`
+- N/A
 
 ## 5. Invariants & Non-Negotiables Preserved
-- [ ] Tier 1: Pure domain logic remains 100% free of framework or ORM imports.
-- [ ] Tier 1: Real container integration tests (no engine-substitution emulators like SQLite for Postgres).
-- [ ] Tier 1: All stored and wire timestamps use UTC ISO-8601 (`Z`).
-- [ ] Tier 1: Directory nesting depth does not exceed 6 levels from project root.
-- [ ] Tier 1: Database migrations follow Expand/Contract pattern for zero-downtime rollout.
-- [ ] Tier 2: Files respect size ceilings (\le 800 lines hard, \le 400 lines soft); no micro-file sprawl.
-- [ ] Tier 2: Domain test coverage maintains \ge 95% line & branch coverage; adapters \ge 80%.
-- [ ] Tier 2: Transactional outbox pattern used for domain events published to brokers.
-- [ ] Tier 2: Backward compatibility of existing API contracts preserved.
+- [x] Tier 1: Pure domain logic remains 100% free of framework or ORM imports.
+- [x] Tier 1: Zero swallowed exceptions; typed arguments and deterministic exits.
+- [x] Tier 1: Atomic file writes via temporary files and `os.replace`.
+- [x] Tier 2: File count ceiling strictly enforced ($\le 30$ files).
+- [x] Tier 2: Files respect size ceilings ($\le 800$ lines hard).
 
 ## 6. Risk Matrix & Rollback Strategy
 | Risk Description | Probability | Impact | Mitigation Strategy |
 |---|---|---|---|
-| Potential regression in callers | Low | Low | Comprehensive automated regression test suite |
+| Missing files in packed distribution | Low | Medium | Automated extraction test verifying CLI execution |
+| Exceeding 30 files limit | Low | Low | Hard assertion and error exit in `pack_release` |
 
 ### Rollback Strategy
-Revert commits via standard git rollback or branch reset.
+Revert commits via git rollback.

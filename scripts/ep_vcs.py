@@ -217,3 +217,119 @@ def cmd_pr(args: argparse.Namespace) -> int:
         body = args.body or "Automated release candidate prepared under EP-OS protocol."
         return provider.create_prod_pr(title=title, body=body, head_branch=head)
     return 0
+
+
+def pack_release(args: argparse.Namespace) -> int:
+    """
+    Package EP-OS runtime into an absolutely minimalized release zip binary.
+    Enforces maximum file count constraint (<= max_files, default 30).
+    """
+    import zipfile
+
+    output_path = getattr(args, "output", "Packed.zip") or "Packed.zip"
+    max_files = getattr(args, "max_files", 30) or 30
+    root_dir = getattr(args, "root", ".") or "."
+    root_dir = os.path.abspath(root_dir)
+
+    # Core metadata and manifest files
+    root_files = [
+        "SKILL.md",
+        "PRODUCT_SKILL.md",
+        "AGENT.md",
+        "README.md",
+        "LICENSE",
+        "project.json",
+    ]
+
+    # Core runtime Python scripts
+    scripts_dir = os.path.join(root_dir, "scripts")
+    if not os.path.isdir(scripts_dir):
+        print(f"[ERROR] Scripts directory not found at '{scripts_dir}'.", file=sys.stderr)
+        return 1
+
+    script_files = sorted([f for f in os.listdir(scripts_dir) if f.endswith(".py")])
+
+    # Launcher wrapper script for root
+    launcher_content = """#!/usr/bin/env bash
+# EP-OS Release Binary Entrypoint Launcher
+set -euo pipefail
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export PYTHONPATH="${DIR}/scripts:${PYTHONPATH:-}"
+exec python3 "${DIR}/scripts/ep.py" "$@"
+"""
+
+    total_files = len(root_files) + len(script_files) + 1  # +1 for root launcher 'ep'
+
+    print("=== EP-OS Release Binary Packaging ===")
+    print(f"Target Output: '{output_path}'")
+    print(f"Maximum File Count Ceiling: {max_files}")
+    print(f"Selected Files Count: {total_files}")
+
+    if total_files > max_files:
+        print(
+            f"[ERROR] Release package contains {total_files} files, exceeding limit of {max_files} files.\n"
+            f"Remediation: Prune non-essential files before packaging.",
+            file=sys.stderr,
+        )
+        return 1
+
+    # Verify that all required files exist
+    for rf in root_files:
+        full_p = os.path.join(root_dir, rf)
+        if not os.path.isfile(full_p):
+            print(f"[ERROR] Required release file '{rf}' does not exist at '{full_p}'.", file=sys.stderr)
+            return 1
+
+    try:
+        out_dir = os.path.dirname(os.path.abspath(output_path))
+        if out_dir:
+            os.makedirs(out_dir, exist_ok=True)
+
+        tmp_output = f"{output_path}.tmp.{os.getpid()}"
+        with zipfile.ZipFile(tmp_output, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            # 1. Add root executable entrypoint
+            zinfo = zipfile.ZipInfo("ep")
+            zinfo.external_attr = 0o755 << 16  # rwxr-xr-x
+            zinfo.date_time = datetime.datetime.now().timetuple()[:6]
+            zf.writestr(zinfo, launcher_content)
+
+            # 2. Add root manifest and documentation files
+            for rf in root_files:
+                full_p = os.path.join(root_dir, rf)
+                zf.write(full_p, rf)
+
+            # 3. Add scripts with executable bits preserved where appropriate
+            for sf in script_files:
+                full_p = os.path.join(scripts_dir, sf)
+                arcname = f"scripts/{sf}"
+                zinfo = zipfile.ZipInfo(arcname)
+                if os.access(full_p, os.X_OK):
+                    zinfo.external_attr = 0o755 << 16
+                else:
+                    zinfo.external_attr = 0o644 << 16
+                zinfo.date_time = datetime.datetime.now().timetuple()[:6]
+                with open(full_p, "rb") as fh:
+                    zf.writestr(zinfo, fh.read())
+
+        # Verify archive integrity
+        with zipfile.ZipFile(tmp_output, "r") as zf_check:
+            bad_file = zf_check.testzip()
+            if bad_file:
+                print(f"[ERROR] Corrupt file '{bad_file}' detected in generated zip.", file=sys.stderr)
+                os.remove(tmp_output)
+                return 1
+            packed_names = zf_check.namelist()
+            if len(packed_names) > max_files:
+                print(f"[ERROR] Packed zip has {len(packed_names)} files > {max_files} limit.", file=sys.stderr)
+                os.remove(tmp_output)
+                return 1
+
+        os.replace(tmp_output, output_path)
+        file_size_kb = os.path.getsize(output_path) / 1024
+        print(f"[OK] Release zip binary created successfully at '{output_path}'.")
+        print(f"     Total Files: {len(packed_names)} (Ceiling: <= {max_files}) | Size: {file_size_kb:.1f} KB")
+        return 0
+    except Exception as e:
+        print(f"[ERROR] Failed to create release zip binary: {e}", file=sys.stderr)
+        return 1
+

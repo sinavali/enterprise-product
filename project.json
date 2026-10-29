@@ -32,6 +32,12 @@
       "options": {
         "command": "python3 scripts/ep.py audit"
       }
+    },
+    "package": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "python3 scripts/ep.py release pack"
+      }
     }
   }
 }

@@ -234,6 +234,7 @@ ep vcs init-branches [--base <branch>] [--push|--no-push]
 ep pr create-prod [--title <title>] [--body <body>]
 ep release create <version>
 ep release finalize --prod
+ep release pack [--output <path>] [--max-files <N>]
 ep milestone status
 
 # Operational Engineering, Containers, SLOs, DORA & Performance
