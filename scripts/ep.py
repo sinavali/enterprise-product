@@ -69,6 +69,8 @@ def _resolve_change_surface(target_file: Optional[str] = None) -> str:
         for cand in [
             os.path.join(".ep", "surfaces", f"{branch_slug}.md"),
             os.path.join(".ep", "surfaces", f"{branch_slug}.json"),
+            os.path.join(".ep", "surfaces", "main.md"),
+            os.path.join(".ep", "surfaces", "main.json"),
             os.path.join(".ep", "surfaces", "active.md"),
             os.path.join(".ep", "surfaces", "active.json"),
             os.path.join(".ep", "surface.md"),
@@ -76,6 +78,10 @@ def _resolve_change_surface(target_file: Optional[str] = None) -> str:
         ]:
             if os.path.exists(cand):
                 return cand
+        if os.path.isdir(os.path.join(".ep", "surfaces")):
+            for f in sorted(os.listdir(os.path.join(".ep", "surfaces"))):
+                if f.endswith((".md", ".json")) and not f.startswith("."):
+                    return os.path.join(".ep", "surfaces", f)
     except Exception:
         pass
 

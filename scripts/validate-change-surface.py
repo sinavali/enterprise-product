@@ -222,6 +222,8 @@ def main():
                 for cand in [
                     os.path.join(".ep", "surfaces", f"{branch_slug}.md"),
                     os.path.join(".ep", "surfaces", f"{branch_slug}.json"),
+                    os.path.join(".ep", "surfaces", "main.md"),
+                    os.path.join(".ep", "surfaces", "main.json"),
                     os.path.join(".ep", "surfaces", "active.md"),
                     os.path.join(".ep", "surfaces", "active.json"),
                     os.path.join(".ep", "surface.md"),
@@ -230,6 +232,12 @@ def main():
                         target_file = cand
                         needs_fallback = False
                         break
+                if needs_fallback and os.path.isdir(os.path.join(".ep", "surfaces")):
+                    for f in sorted(os.listdir(os.path.join(".ep", "surfaces"))):
+                        if f.endswith((".md", ".json")) and not f.startswith("."):
+                            target_file = os.path.join(".ep", "surfaces", f)
+                            needs_fallback = False
+                            break
             except Exception:
                 pass
         if needs_fallback and os.path.isdir("docs/changes"):
