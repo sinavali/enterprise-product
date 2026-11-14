@@ -104,6 +104,30 @@ class TestEpVcsAndSessions(unittest.TestCase):
             content = f.read()
         self.assertIn("All projects must follow DDD", content)
 
+    def test_root_manifest_re_read_directive_and_projection_sync(self):
+        root_agent = os.path.join(REPO_ROOT, "AGENT.md")
+        self.assertTrue(os.path.exists(root_agent), "AGENT.md must exist at repo root")
+        with open(root_agent, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        # Verify AGENT.md contains the re-read mandate
+        self.assertIn("MANDATORY SESSION RESTORATION & SKILL RE-READ DIRECTIVE", content)
+        self.assertIn("SKILL.md", content)
+
+        # Execute manifest sync on repo root
+        proc = self.run_ep(["manifest", "sync", "--root", str(REPO_ROOT)])
+        self.assertEqual(proc.returncode, 0, f"ep manifest sync failed: {proc.stderr}")
+
+        # Verify projections exist and contain the directive
+        for proj_file in ["CLAUDE.md", ".cursorrules", ".windsurfrules"]:
+            proj_path = os.path.join(REPO_ROOT, proj_file)
+            self.assertTrue(os.path.exists(proj_path), f"Projection file '{proj_file}' missing")
+            with open(proj_path, "r", encoding="utf-8") as f:
+                proj_content = f.read()
+            self.assertIn("MANDATORY SESSION RESTORATION & SKILL RE-READ DIRECTIVE", proj_content,
+                          f"Projection '{proj_file}' is missing the re-read directive")
+            self.assertIn("SKILL.md", proj_content)
+
     def test_vcs_sync_check_and_topology(self):
         # Setup git repo in temp_dir
         subprocess.run(["git", "init", "-b", "main"], cwd=self.temp_dir, capture_output=True, check=True)

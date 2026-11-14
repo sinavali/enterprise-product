@@ -28,7 +28,7 @@ else:
             def atomic_write(filepath: str, content: str, mode: str = "w", encoding: str = "utf-8") -> None:
                 dir_name = os.path.dirname(os.path.abspath(filepath))
                 os.makedirs(dir_name, exist_ok=True)
-                tmp_file = f"{filepath}.tmp.{os.getpid()}"
+                tmp_file = f"{filepath}.tmp.{os.getpid()}.{os.urandom(6).hex()}"
                 with open(tmp_file, mode, encoding=encoding) as f:
                     f.write(content)
                 os.replace(tmp_file, filepath)
@@ -67,63 +67,39 @@ def cmd_init(args: argparse.Namespace) -> int:
     os.makedirs(target_dir, exist_ok=True)
     scope = "backend" if profile == "A" else "frontend" if profile == "B" else "mobile" if profile == "C" else "shared"
 
-    templates_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "templates", "profiles")
-    template_file = None
-    if profile == "A" and lang in ("go", "golang"):
-        template_file = "go-service-project.json"
-    elif profile == "A" and lang in ("rust", "rs"):
-        template_file = "rust-service-project.json"
-    elif profile == "A" and lang in ("ts", "typescript", "node", "nodejs"):
-        template_file = "node-service-project.json"
-    elif profile == "A" and lang in ("python", "py"):
-        template_file = "python-service-project.json"
-    elif profile == "B":
-        template_file = "next-web-project.json"
-    elif profile == "C":
-        template_file = "flutter-mobile-project.json"
-    elif profile == "D":
-        template_file = "contracts-project.json"
+    norm_lang = LANG_ALIASES.get(lang, lang)
+    stack_entry = next((s for s in STACK_DEFINITIONS if s[0] == norm_lang), None)
+    if stack_entry:
+        _, _, lint_c, test_c, build_c, audit_c = stack_entry
+    else:
+        lint_c = f"echo 'Linting {name}...'"
+        test_c = f"echo 'Testing {name}...'"
+        build_c = f"echo 'Building {name}...'"
+        audit_c = f"echo 'Auditing {name}...'"
 
-    project_json = None
-    if template_file:
-        template_path = os.path.join(templates_dir, template_file)
-        if os.path.exists(template_path):
-            try:
-                with open(template_path, "r", encoding="utf-8") as f:
-                    project_json = json.load(f)
-                project_json["name"] = name
-                project_json["sourceRoot"] = f"{target_dir}/src" if profile != "C" else f"{target_dir}/lib"
-                for _, t_val in project_json.get("targets", {}).items():
-                    if isinstance(t_val, dict) and "options" in t_val and "cwd" in t_val["options"]:
-                        t_val["options"]["cwd"] = target_dir
-            except Exception:
-                project_json = None
+    if profile == "B":
+        build_c = "pnpm next build"
 
-    if not project_json:
-        rel_schema = os.path.relpath("node_modules/nx/schemas/project-schema.json", target_dir).replace("\\", "/")
-        norm_lang = LANG_ALIASES.get(lang, lang)
-        stack_entry = next((s for s in STACK_DEFINITIONS if s[0] == norm_lang), None)
-        if stack_entry:
-            _, _, lint_c, test_c, build_c, audit_c = stack_entry
-        else:
-            lint_c = f"echo 'Linting {name}...'"
-            test_c = f"echo 'Testing {name}...'"
-            build_c = f"echo 'Building {name}...'"
-            audit_c = f"echo 'Auditing {name}...'"
+    targets = {
+        "lint": {"executor": "nx:run-commands", "options": {"command": lint_c, "cwd": target_dir}},
+        "test": {"executor": "nx:run-commands", "options": {"command": test_c, "cwd": target_dir}},
+        "build": {"executor": "nx:run-commands", "options": {"command": build_c, "cwd": target_dir}},
+        "audit": {"executor": "nx:run-commands", "options": {"command": audit_c, "cwd": target_dir}},
+    }
+    if profile == "D":
+        targets["generate-ts"] = {"executor": "nx:run-commands", "options": {"command": "pnpm openapi-typescript schemas/openapi/api.yaml -o src/generated.ts", "cwd": target_dir}}
 
-        project_json = {
-            "name": name,
-            "$schema": rel_schema,
-            "projectType": "application" if profile != "D" else "library",
-            "sourceRoot": f"{target_dir}/src",
-            "tags": [f"profile:{profile.lower()}", f"scope:{scope}", f"lang:{norm_lang}"],
-            "targets": {
-                "lint": {"executor": "nx:run-commands", "options": {"command": lint_c, "cwd": target_dir}},
-                "test": {"executor": "nx:run-commands", "options": {"command": test_c, "cwd": target_dir}},
-                "build": {"executor": "nx:run-commands", "options": {"command": build_c, "cwd": target_dir}},
-                "audit": {"executor": "nx:run-commands", "options": {"command": audit_c, "cwd": target_dir}},
-            },
-        }
+    rel_schema = os.path.relpath("node_modules/nx/schemas/project-schema.json", target_dir).replace("\\", "/")
+    source_root = f"{target_dir}/lib" if profile == "C" else f"{target_dir}/src"
+
+    project_json = {
+        "name": name,
+        "$schema": rel_schema,
+        "projectType": "application" if profile != "D" else "library",
+        "sourceRoot": source_root,
+        "tags": [f"profile:{profile.lower()}", f"scope:{scope}", f"lang:{norm_lang}"],
+        "targets": targets,
+    }
     atomic_write(os.path.join(target_dir, "project.json"), json.dumps(project_json, indent=2) + "\n")
 
     agent_md = f"""---
@@ -388,13 +364,18 @@ def is_surface_unpopulated(content: str) -> bool:
 
 def archive_change_surface(
     surface_file: str = "CHANGE_SURFACE.md",
-    changes_dir: str = "docs/changes",
+    changes_dir: Optional[str] = None,
     reset_root: bool = True,
 ) -> Tuple[bool, str]:
     """
     Archives a populated Change Surface to docs/changes/YYYY-MM-DD-<slug>.md
-    and resets the active surface to a clean baseline template.
+    or .ep/surfaces/history/YYYY-MM-DD-<slug>.md and resets the active surface to a clean baseline template.
     """
+    if not changes_dir:
+        if "surfaces" in surface_file or ".ep" in surface_file:
+            changes_dir = os.path.join(".ep", "surfaces", "history")
+        else:
+            changes_dir = "docs/changes"
     if not os.path.exists(surface_file):
         return False, f"Change Surface file '{surface_file}' does not exist."
 

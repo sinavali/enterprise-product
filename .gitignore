@@ -15,7 +15,9 @@ coverage/
 *.zip
 
 # Internal EP-OS & Caches
-.ep/
+.ep/*
+!.ep/surfaces/
+.agents/
 .mypy_cache/
 .ruff_cache/
 

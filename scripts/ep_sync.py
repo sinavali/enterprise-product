@@ -29,7 +29,7 @@ def resolve_default_workspace_dir() -> str:
 
 DEFAULT_WORKSPACE_DIR = resolve_default_workspace_dir()
 
-TRACKED_SUBDIRS = ["scripts", "references", "templates", "tests", "docs", ".github"]
+TRACKED_SUBDIRS = ["scripts", "templates", "tests", "docs", ".github"]
 TRACKED_ROOT_FILES = [
     "SKILL.md", "README.md", "package.json", "tsconfig.json",
     "AGENT.md", "CLAUDE.md", ".cursorrules", ".windsurfrules",
@@ -86,7 +86,7 @@ def sync_trees(source_dir: str, dest_dir: str) -> List[str]:
             src_file = os.path.join(source_dir, rel_path)
             dst_file = os.path.join(dest_dir, rel_path)
             os.makedirs(os.path.dirname(dst_file), exist_ok=True)
-            tmp_dst = f"{dst_file}.tmp.{os.getpid()}"
+            tmp_dst = f"{dst_file}.tmp.{os.getpid()}.{os.urandom(6).hex()}"
             shutil.copy2(src_file, tmp_dst)
             os.replace(tmp_dst, dst_file)
             updated_files.append(rel_path)

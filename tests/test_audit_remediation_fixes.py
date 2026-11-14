@@ -158,9 +158,17 @@ class TestAuditRemediationFixes(unittest.TestCase):
     # --------------------------------------------------------------------------
     def test_fix_04_contracts_scope_tag(self):
         template_file = REPO_ROOT / "templates" / "profiles" / "contracts-project.json"
-        with open(template_file, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        tags = data.get("tags", [])
+        if template_file.exists():
+            with open(template_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            tags = data.get("tags", [])
+        else:
+            target_dir = os.path.join(self.temp_dir, "libs", "contracts")
+            args = argparse.Namespace(name="contracts", profile="D", lang="ts", dir=target_dir)
+            cmd_init(args)
+            with open(os.path.join(target_dir, "project.json"), "r", encoding="utf-8") as f:
+                data = json.load(f)
+            tags = data.get("tags", [])
         self.assertIn("scope:shared", tags)
         self.assertNotIn("scope:contracts", tags)
 

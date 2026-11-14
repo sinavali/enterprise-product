@@ -38,7 +38,7 @@ try:
     from scripts.ep_stack import STACK_DEFINITIONS, detect_stack
     from scripts.ep_sync import cmd_sync_skill
     from scripts.ep_tooling import cmd_chaos, cmd_contract, cmd_sbom
-    from scripts.ep_vcs import BaseGitProvider, GitHubProvider, GitLabProvider, LocalGitProvider, cmd_pr, cmd_vcs, get_git_provider
+    from scripts.ep_vcs import BaseGitProvider, GitHubProvider, GitLabProvider, LocalGitProvider, cmd_milestone, cmd_pr, cmd_release, cmd_vcs, get_git_provider
 except ImportError:
     from ep_adopt import cmd_adopt  # type: ignore[import-not-found,no-redef]
     from ep_ast import cmd_ast  # type: ignore[import-not-found,no-redef]
@@ -54,34 +54,57 @@ except ImportError:
     from ep_stack import STACK_DEFINITIONS, detect_stack  # type: ignore[import-not-found,no-redef]
     from ep_sync import cmd_sync_skill  # type: ignore[import-not-found,no-redef]
     from ep_tooling import cmd_chaos, cmd_contract, cmd_sbom  # type: ignore[import-not-found,no-redef]
-    from ep_vcs import BaseGitProvider, GitHubProvider, GitLabProvider, LocalGitProvider, cmd_pr, cmd_vcs, get_git_provider  # type: ignore[import-not-found,no-redef]
+    from ep_vcs import BaseGitProvider, GitHubProvider, GitLabProvider, LocalGitProvider, cmd_milestone, cmd_pr, cmd_release, cmd_vcs, get_git_provider  # type: ignore[import-not-found,no-redef]
 
-def _resolve_change_surface(target_file: str) -> str:
-    needs_fallback = False
-    if not os.path.exists(target_file):
-        needs_fallback = True
-    elif target_file == "CHANGE_SURFACE.md" or os.path.basename(target_file) == "CHANGE_SURFACE.md":
+def _resolve_change_surface(target_file: Optional[str] = None) -> str:
+    # 1. If an explicit existing file was requested, return it
+    if target_file and os.path.exists(target_file) and target_file != "CHANGE_SURFACE.md":
+        return target_file
+
+    # 2. Check branch-scoped surface in .ep/surfaces/<branch>.md or .json
+    try:
+        branch_res = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, check=False, timeout=10)
+        branch = branch_res.stdout.strip() if branch_res.returncode == 0 else "main"
+        branch_slug = re.sub(r"[^a-zA-Z0-9_\-]", "_", branch)
+        for cand in [
+            os.path.join(".ep", "surfaces", f"{branch_slug}.md"),
+            os.path.join(".ep", "surfaces", f"{branch_slug}.json"),
+            os.path.join(".ep", "surfaces", "active.md"),
+            os.path.join(".ep", "surfaces", "active.json"),
+            os.path.join(".ep", "surface.md"),
+            os.path.join(".ep", "surface.json"),
+        ]:
+            if os.path.exists(cand):
+                return cand
+    except Exception:
+        pass
+
+    # 3. Check root CHANGE_SURFACE.md if present and populated
+    if os.path.exists("CHANGE_SURFACE.md"):
         try:
-            with open(target_file, "r", encoding="utf-8") as f:
+            with open("CHANGE_SURFACE.md", "r", encoding="utf-8") as f:
                 c = f.read()
-            if is_surface_unpopulated(c):
-                needs_fallback = True
+            if not is_surface_unpopulated(c):
+                return "CHANGE_SURFACE.md"
         except Exception:
-            needs_fallback = True
-    if needs_fallback and os.path.exists("docs/changes"):
+            pass
+
+    # 4. Check docs/changes fallback
+    if os.path.exists("docs/changes"):
         changes = sorted(
             [os.path.join("docs/changes", f) for f in os.listdir("docs/changes") if f.endswith(".md")],
             key=lambda p: (os.path.getmtime(p), p),
         )
         if changes:
             return changes[-1]
-    return target_file
+
+    return target_file or "CHANGE_SURFACE.md"
 
 
 # --- Subcommand: surface (Change Surface Validator & Blast-Radius Gate) ---
 def cmd_surface(args: argparse.Namespace) -> int:
     if args.action == "validate":
-        target_file = _resolve_change_surface(getattr(args, "output", None) or getattr(args, "surface_file", None) or args.file or "CHANGE_SURFACE.md")
+        target_file = _resolve_change_surface(getattr(args, "output", None) or getattr(args, "surface_file", None) or args.file or None)
         if not os.path.exists(target_file):
             print(f"[ERROR] Change Surface file '{target_file}' not found.", file=sys.stderr)
             return 1
@@ -92,7 +115,7 @@ def cmd_surface(args: argparse.Namespace) -> int:
 
     elif args.action == "check-diff":
         base_branch = args.base or "origin/main"
-        target_file = _resolve_change_surface(getattr(args, "output", None) or getattr(args, "surface_file", None) or args.file or "CHANGE_SURFACE.md")
+        target_file = _resolve_change_surface(getattr(args, "output", None) or getattr(args, "surface_file", None) or args.file or None)
 
         if not os.path.exists(target_file):
             print(f"[ERROR] No Change Surface artifact found to verify against git diff.", file=sys.stderr)
@@ -150,7 +173,7 @@ def cmd_surface(args: argparse.Namespace) -> int:
         out_of_bounds = []
 
         for m_file in modified_files:
-            if m_file.endswith(exempt_suffixes) or m_file.startswith(("docs/", ".ep/", ".git/")) or m_file in ("CHANGE_SURFACE.md", ".gitignore"):
+            if m_file.endswith(exempt_suffixes) or m_file.startswith(("docs/", ".ep/", ".git/", ".agents/")) or m_file in ("CHANGE_SURFACE.md", ".gitignore"):
                 continue
 
             covered = False
@@ -174,7 +197,7 @@ def cmd_surface(args: argparse.Namespace) -> int:
 
     elif args.action == "archive":
         target_file = getattr(args, "output", None) or getattr(args, "surface_file", None) or args.file or "CHANGE_SURFACE.md"
-        changes_dir = getattr(args, "changes_dir", "docs/changes") or "docs/changes"
+        changes_dir = getattr(args, "changes_dir", None)
         no_reset = getattr(args, "no_reset", False)
         ok, arc_res = archive_change_surface(target_file, changes_dir=changes_dir, reset_root=not no_reset)
         if not ok:
@@ -184,7 +207,14 @@ def cmd_surface(args: argparse.Namespace) -> int:
         return 0
 
     elif args.action == "init":
-        target_file = getattr(args, "output", None) or getattr(args, "surface_file", None) or args.file or "CHANGE_SURFACE.md"
+        current_branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, check=False, timeout=10).stdout.strip() or "main"
+        branch_slug = re.sub(r"[^a-zA-Z0-9_\-]", "_", current_branch)
+        target_file = getattr(args, "output", None) or getattr(args, "surface_file", None) or args.file
+        if not target_file:
+            os.makedirs(".ep/surfaces", exist_ok=True)
+            target_file = os.path.join(".ep", "surfaces", f"{branch_slug}.md")
+        elif os.path.dirname(target_file):
+            os.makedirs(os.path.dirname(target_file), exist_ok=True)
         base_branch = getattr(args, "base", "origin/main") or "origin/main"
 
         if os.path.exists(target_file):
@@ -235,8 +265,10 @@ def cmd_surface(args: argparse.Namespace) -> int:
             "- Real ephemeral containers for integration test assertions.\n\n## 6. Risk Matrix\n"
             "- Rollback: Revert commits via standard git rollback.\n- Blast radius bounded strictly to declared Code Surface.\n"
         )
-        with open(target_file, "w", encoding="utf-8") as f:
+        tmp_target = f"{target_file}.tmp.{os.getpid()}.{os.urandom(6).hex()}"
+        with open(tmp_target, "w", encoding="utf-8") as f:
             f.write(content)
+        os.replace(tmp_target, target_file)
         print(f"[OK] Initialized Change Surface at '{target_file}'.")
         cmd_validate = [sys.executable, os.path.join(SCRIPTS_DIR, "validate-change-surface.py"), target_file]
         return subprocess.run(cmd_validate, timeout=30).returncode
@@ -304,7 +336,7 @@ def cmd_migration(args: argparse.Namespace) -> int:
         for v_file, v_line, v_desc, v_match in violations:
             print(f"  ❌ {v_file}:{v_line} -> Found '{v_match}'", file=sys.stderr)
             print(f"     Reason: {v_desc}", file=sys.stderr)
-        print("\nRemediation: Follow Expand/Contract phased lifecycle (see references/core-directives.md).", file=sys.stderr)
+        print("\nRemediation: Follow Expand/Contract phased lifecycle (see docs/ARCHITECTURE.md § 1.1 or SKILL.md § 1).", file=sys.stderr)
         print("If this is Phase 5 (Contract cleanup), add an approved ADR comment: '-- adr-ref: docs/adr/NNNN-contract.md'.", file=sys.stderr)
         return 1
 
@@ -313,130 +345,88 @@ def cmd_migration(args: argparse.Namespace) -> int:
 
 
 # --- Subcommand: release & milestone (SemVer & Release Governance) ---
-def cmd_release(args: argparse.Namespace) -> int:
-    action = args.action
-    version = getattr(args, "version", None) or getattr(args, "version_flag", None)
+# --- Subcommand: memory (Product & Agent Cross-Session Memory Snapshot) ---
+def cmd_memory(args: argparse.Namespace) -> int:
+    action = getattr(args, "action", "load") or "load"
+    mem_dir = ".ep"
+    os.makedirs(mem_dir, exist_ok=True)
+    mem_file = os.path.join(mem_dir, "memory.json")
 
-    if action == "create":
-        if not version or not re.match(r"^v?\d+\.\d+\.\d+", version):
-            print(f"[ERROR] Version '{version}' does not match SemVer format (vMAJOR.MINOR.PATCH).", file=sys.stderr)
-            return 1
-        formatted_version = f"v{version.lstrip('v')}"
-        tag_res = subprocess.run(["git", "tag", "-s", formatted_version, "-m", f"Release {formatted_version}"], check=False, timeout=30)
-        if tag_res.returncode != 0:
-            res = subprocess.run(["git", "tag", "-a", formatted_version, "-m", f"Release {formatted_version}"], check=False, timeout=30)
-            if res.returncode != 0:
-                return res.returncode
-        print(f"[OK] Created release tag '{formatted_version}'.")
+    branch = "unknown"
+    try:
+        b_res = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, check=False, timeout=10)
+        if b_res.returncode == 0:
+            branch = b_res.stdout.strip()
+    except Exception:
+        pass
+
+    status_files = []
+    try:
+        st_res = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, check=False, timeout=10)
+        if st_res.returncode == 0:
+            for l in st_res.stdout.splitlines():
+                if len(l) >= 4:
+                    status_files.append(l[3:].strip())
+    except Exception:
+        pass
+
+    if action == "save":
+        data = {
+            "product": "enterprise-product",
+            "branch": branch,
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "task": getattr(args, "task", None) or "Active Engineering Task",
+            "notes": getattr(args, "notes", None) or "",
+            "modified_files": status_files[:20],
+            "total_modified": len(status_files),
+            "invariants": [
+                "Pure Domain (DDD) zero framework imports",
+                "Hexagonal Architecture (Ports & Adapters)",
+                "TDD with Real Ephemeral Containers (No SQLite mocks)",
+                "UTC ISO-8601 timestamps everywhere",
+                "Mandatory endpoint authentication & permission guards",
+                "Anti-Sprawl ceilings: <=800 LOC, <=6 depth, 0 utils/ dumping",
+                "Dedicated isolation: all EP-OS artifacts inside .ep/"
+            ]
+        }
+        tmp_mem = f"{mem_file}.tmp.{os.getpid()}.{os.urandom(6).hex()}"
+        with open(tmp_mem, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+        os.replace(tmp_mem, mem_file)
+        print(f"[OK] Product & agent memory snapshot saved to '{mem_file}'.")
         return 0
-    elif action == "finalize":
-        cur_branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, check=False, timeout=10).stdout.strip()
-        is_prod = getattr(args, "prod", False) or cur_branch == "prod"
-        version_label = version
-        today_str = datetime.date.today().isoformat()
-        rel_dir = "docs/releases"
-        os.makedirs(rel_dir, exist_ok=True)
-        rel_filename = f"RELEASE_{version_label}.md" if version_label else f"RELEASE_{today_str}.md"
-        rel_file = os.path.join(rel_dir, rel_filename)
-        changes_dir = "docs/changes"
-        summaries = []
 
-        # Scope changes to files in docs/changes/ created since previous git tag
-        res_tag = subprocess.run(["git", "describe", "--tags", "--abbrev=0"], capture_output=True, text=True, check=False, timeout=10)
-        prev_tag = res_tag.stdout.strip() if res_tag.returncode == 0 else None
-
-        scoped_files = set()
-        if prev_tag:
-            res_diff = subprocess.run(["git", "diff", "--name-only", "--diff-filter=AM", f"{prev_tag}..HEAD", "--", changes_dir], capture_output=True, text=True, check=False, timeout=10)
-            if res_diff.returncode == 0:
-                for f in res_diff.stdout.splitlines():
-                    if f.strip().endswith(".md"):
-                        scoped_files.add(os.path.basename(f.strip()))
-            res_status = subprocess.run(["git", "status", "--porcelain", "--", changes_dir], capture_output=True, text=True, check=False, timeout=10)
-            if res_status.returncode == 0:
-                for line in res_status.stdout.splitlines():
-                    if len(line) >= 4:
-                        p = line[3:].strip()
-                        if " -> " in p:
-                            p = p.split(" -> ")[1].strip()
-                        if p.endswith(".md"):
-                            scoped_files.add(os.path.basename(p))
-
-        if os.path.exists(changes_dir):
-            for cf in sorted(os.listdir(changes_dir)):
-                if cf.endswith(".md"):
-                    if not prev_tag or (scoped_files and cf in scoped_files):
-                        with open(os.path.join(changes_dir, cf), "r", encoding="utf-8", errors="ignore") as fh:
-                            summaries.append(f"### {cf}\n\n" + fh.read())
-
-        header_title = f"Production Release Notes: {version_label or today_str}" if is_prod else f"Release Notes: {version_label or today_str}"
-        rel_content = (
-            f"# {header_title}\n\n- **Date**: `{today_str}`\n- **Branch**: `{cur_branch}`\n"
-            f"- **Production**: `{is_prod}`\n"
-            f"- **Change Surfaces Included**: `{len(summaries)}`\n\n## Change Summaries\n\n"
-            + ("\n\n---\n\n".join(summaries) if summaries else "_No individual Change Surface files recorded._\n")
-        )
-        with open(rel_file, "w", encoding="utf-8") as fh:
-            fh.write(rel_content)
-        print(f"[OK] Generated release notes at '{rel_file}'.")
-        print(f"[OK] Finalized release progression on branch '{cur_branch}'.")
+    elif action == "show":
+        if not os.path.exists(mem_file):
+            print(f"[INFO] No memory snapshot found at '{mem_file}'. Run 'ep memory save' to initialize.")
+            return 0
+        with open(mem_file, "r", encoding="utf-8") as f:
+            print(f.read())
         return 0
-    elif action == "pack":
+
+    # Default action: load
+    saved_task = "Active Product Development"
+    saved_time = "N/A"
+    if os.path.exists(mem_file):
         try:
-            from scripts.ep_vcs import pack_release
-        except ImportError:
-            from ep_vcs import pack_release  # type: ignore[import-not-found,no-redef]
-        return pack_release(args)
+            with open(mem_file, "r", encoding="utf-8") as f:
+                saved = json.load(f)
+                saved_task = saved.get("task", saved_task)
+                saved_time = saved.get("timestamp", saved_time)
+        except Exception:
+            pass
+
+    print("=== EP-OS Product & Session Memory Snapshot ===")
+    print(f"Product: enterprise-product | Active Branch: {branch}")
+    print(f"Architecture: DDD + Hexagonal (Ports & Adapters) [docs/ARCHITECTURE.md]")
+    print(f"Product Context: Living specifications [PRODUCT.md]")
+    print(f"Core Invariants: Pure domain, Real OCI DB containers, UTC ISO-8601, Mandatory auth guards")
+    print(f"Isolation: All runtime artifacts confined to .ep/")
+    print(f"Active Task: {saved_task} (Last updated: {saved_time})")
+    print(f"Working Directory Status: {len(status_files)} modified file(s)")
+    print("[DIRECTIVE] Re-read SKILL.md and AGENT.md before proposing code changes or tool calls.")
     return 0
 
-
-def cmd_milestone(args: argparse.Namespace) -> int:
-    action = args.action
-    name = getattr(args, "name", None)
-    ms_dir = "docs/milestones"
-    os.makedirs(ms_dir, exist_ok=True)
-
-    if action == "create":
-        if not name:
-            print("[ERROR] Milestone name required for create.", file=sys.stderr)
-            return 1
-        ms_file = os.path.join(ms_dir, f"{name}.md")
-        if os.path.exists(ms_file):
-            print(f"[INFO] Milestone '{name}' already exists at '{ms_file}'.")
-            return 0
-        with open(ms_file, "w", encoding="utf-8") as f:
-            f.write(
-                f"# Milestone: {name}\n\n- **Created**: `{datetime.date.today().isoformat()}`\n"
-                f"- **Target Due Date**: `{getattr(args, 'due', None) or 'TBD'}`\n- **Status**: `IN_PROGRESS`\n"
-                "- **Associated Subprojects**:\n  - `TBD`\n\n## Delivery Objectives\n"
-                "- [ ] Implement core features\n- [ ] 10-Dimension Audit clean\n- [ ] Ephemeral container tests passing\n"
-            )
-        print(f"[OK] Created milestone manifest at '{ms_file}'.")
-        return 0
-    elif action in ("status", "check"):
-        ms_files = [os.path.join(ms_dir, f) for f in os.listdir(ms_dir) if f.endswith(".md")] if os.path.exists(ms_dir) else []
-        if name:
-            ms_files = [f for f in ms_files if os.path.basename(f) == f"{name}.md" or os.path.basename(f).startswith(name)]
-        if not ms_files:
-            print("[INFO] No matching milestones found.")
-            return 0
-        print(f"=== EP-OS Milestone {action.upper()} ({len(ms_files)} milestone(s)) ===")
-        all_completed = True
-        for mf in ms_files:
-            with open(mf, "r", encoding="utf-8", errors="ignore") as fh:
-                c = fh.read()
-            total_items = len(re.findall(r"-\s*\[[ xX]\]", c))
-            done_items = len(re.findall(r"-\s*\[[xX]\]", c))
-            is_done = total_items > 0 and total_items == done_items
-            if not is_done and total_items > 0:
-                all_completed = False
-            status = "COMPLETED" if is_done else "IN_PROGRESS"
-            pct = f"({done_items}/{total_items} items)" if total_items else ""
-            print(f"  • {os.path.basename(mf)[:-3]}: [{status}] {pct}")
-        if action == "check" and not all_completed:
-            print("[WARN] Some milestones have incomplete checklist items.", file=sys.stderr)
-        return 0
-    return 0
 
 # --- Subcommand: main dispatcher ---
 def main():
@@ -445,6 +435,12 @@ def main():
         description="Unified Mechanical CLI for Enterprise-Product Engineering OS (EP-OS)",
     )
     subparsers = parser.add_subparsers(dest="subcommand", help="Operational subcommands")
+
+    # memory
+    p_mem = subparsers.add_parser("memory", help="Product & agent cross-session memory management")
+    p_mem.add_argument("action", choices=["save", "load", "show"], default="load", nargs="?", help="Memory action")
+    p_mem.add_argument("--task", default=None, help="Current active task description")
+    p_mem.add_argument("--notes", default=None, help="Additional context notes")
 
     # surface
     p_surface = subparsers.add_parser("surface", help="Change Surface validation, blast-radius bounding, and archival")
@@ -456,7 +452,7 @@ def main():
     p_surface.add_argument("--strict", action="store_true", help="Disallow template placeholders")
     p_surface.add_argument("--scope", default=None, help="Project scope hint")
     p_surface.add_argument("--title", default=None, help="Change Surface title")
-    p_surface.add_argument("--changes-dir", default="docs/changes", help="Directory for archived Change Surfaces")
+    p_surface.add_argument("--changes-dir", default=None, help="Directory for archived Change Surfaces")
     p_surface.add_argument("--no-reset", action="store_true", help="Do not reset active Change Surface to template")
 
     # migration
@@ -546,6 +542,9 @@ def main():
     p_nc = subparsers.add_parser("nc", help="Audit NEED_CLARIFICATION items for expiration")
     p_nc.add_argument("action", choices=["check"], help="Action to perform")
     p_nc.add_argument("--max-age", type=int, default=14, help="Max allowed age in days before blocking")
+    p_nc.add_argument("--dir", default="docs/nc", help="Directory or file path to scan")
+    p_nc.add_argument("--json", action="store_true", help="Output results in JSON format")
+    p_nc.add_argument("--as-of-date", default=None, help="Reference date YYYY-MM-DD")
 
     # hooks
     p_hooks = subparsers.add_parser("hooks", help="Manage zero-dependency native git hooks")
@@ -562,7 +561,7 @@ def main():
 
     # license
     p_lic = subparsers.add_parser("license", help="Dependency license and copyleft compliance checker")
-    p_lic.add_argument("action", choices=["check"], help="License action")
+    p_lic.add_argument("action", choices=["check"], default="check", nargs="?", help="License action")
     p_lic.add_argument("--root", default=".", help="Repository root directory")
     p_lic.add_argument("--package-json", dest="package_json", default=None, help="Path to package.json (alias for --root)")
     p_lic.add_argument("--sbom", action="store_true", help="Generate .ep/sbom.json")
@@ -733,11 +732,17 @@ def main():
 
     dispatch = {
         "surface": cmd_surface, "migration": cmd_migration, "graph": cmd_graph,
+        "memory": cmd_memory,
         "init": cmd_init, "worktree": cmd_worktree, "vcs": cmd_vcs, "pr": cmd_pr,
         "session": cmd_session, "manifest": cmd_manifest, "preflight": cmd_preflight,
         "release": cmd_release, "milestone": cmd_milestone, "audit": run_audit,
         "verify": run_enterprise_verify,
-        "nc": lambda a: subprocess.run([sys.executable, os.path.join(SCRIPTS_DIR, "check-nc-items.py"), "--max-age", str(a.max_age)], timeout=30).returncode,
+        "nc": lambda a: subprocess.run(
+            [sys.executable, os.path.join(SCRIPTS_DIR, "check-nc-items.py"), "--max-age", str(a.max_age), "--dir", getattr(a, "dir", "docs/nc") or "docs/nc"]
+            + (["--json"] if getattr(a, "json", False) else [])
+            + (["--as-of-date", a.as_of_date] if getattr(a, "as_of_date", None) else []),
+            timeout=30,
+        ).returncode,
         "hooks": cmd_hooks, "security": cmd_security, "license": cmd_license, "adopt": cmd_adopt,
         "telemetry": cmd_telemetry, "finops": cmd_finops, "policy": cmd_policy,
         "sync-skill": cmd_sync_skill, "ast": cmd_ast, "run": cmd_run, "run-many": cmd_run_many,
@@ -748,6 +753,9 @@ def main():
     }
     if args.subcommand in dispatch:
         sys.exit(dispatch[args.subcommand](args))
+    else:
+        print(f"[ERROR] Unknown subcommand: '{args.subcommand}'", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

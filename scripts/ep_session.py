@@ -24,7 +24,7 @@ else:
             def atomic_write(filepath: str, content: str, mode: str = "w", encoding: str = "utf-8") -> None:
                 dir_name = os.path.dirname(os.path.abspath(filepath))
                 os.makedirs(dir_name, exist_ok=True)
-                tmp_file = f"{filepath}.tmp.{os.getpid()}"
+                tmp_file = f"{filepath}.tmp.{os.getpid()}.{os.urandom(6).hex()}"
                 with open(tmp_file, mode, encoding=encoding) as f:
                     f.write(content)
                 os.replace(tmp_file, filepath)

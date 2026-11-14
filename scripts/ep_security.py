@@ -270,6 +270,93 @@ def check_licenses(root_dir: str = ".") -> Tuple[int, List[Dict[str, str]]]:
                     manifests.append({"file": p, "project": os.path.basename(root), "license": lic})
                 except Exception:
                     pass
+            elif f == "composer.json":
+                p = os.path.join(root, f)
+                try:
+                    with open(p, "r", encoding="utf-8") as fh:
+                        data = json.load(fh)
+                    lic = data.get("license", "UNKNOWN")
+                    lic = ", ".join(str(x) for x in lic) if isinstance(lic, list) else str(lic)
+                    manifests.append({"file": p, "project": str(data.get("name", os.path.basename(root))), "license": lic})
+                except Exception:
+                    pass
+            elif f == "pubspec.yaml":
+                p = os.path.join(root, f)
+                try:
+                    with open(p, "r", encoding="utf-8") as fh:
+                        content = fh.read()
+                    m_name = re.search(r'^[ \t]*name[ \t]*:[ \t]*([^\s\r\n#]+)', content, re.MULTILINE)
+                    proj = m_name.group(1).strip("'\"") if m_name else os.path.basename(root)
+                    m_lic = re.search(r'^[ \t]*(?:license|licence)[ \t]*:[ \t]*([^\r\n#]+)', content, re.MULTILINE | re.IGNORECASE)
+                    if m_lic:
+                        manifests.append({"file": p, "project": proj, "license": m_lic.group(1).strip().strip("'\"")})
+                    for dep, dlic in re.findall(r'^[ \t]*([a-zA-Z0-9_\-\.]+)[ \t]*:[ \t]*[^\r\n#]*#[ \t]*(?:license|licence)[ \t]*:[ \t]*([^\s\r\n#]+)', content, re.MULTILINE | re.IGNORECASE):
+                        manifests.append({"file": p, "project": dep, "license": dlic.strip().strip("'\"")})
+                except Exception:
+                    pass
+            elif f == "pyproject.toml":
+                p = os.path.join(root, f)
+                try:
+                    with open(p, "r", encoding="utf-8") as fh:
+                        content = fh.read()
+                    m_name = re.search(r'name\s*=\s*["\']([^"\']+)["\']', content)
+                    m_lic = re.search(r'license\s*=\s*(?:\{\s*text\s*=\s*)?["\']([^"\']+)["\']', content)
+                    if m_lic:
+                        manifests.append({"file": p, "project": m_name.group(1) if m_name else os.path.basename(root), "license": m_lic.group(1)})
+                except Exception:
+                    pass
+            elif f in ("requirements.txt", "Pipfile"):
+                p = os.path.join(root, f)
+                try:
+                    with open(p, "r", encoding="utf-8") as fh:
+                        content = fh.read()
+                    m_hdr = re.search(r'^[ \t]*#[ \t]*(?:license|licence)[ \t]*:[ \t]*([^\s\r\n#]+)', content, re.MULTILINE | re.IGNORECASE)
+                    if m_hdr:
+                        manifests.append({"file": p, "project": os.path.basename(root) or f, "license": m_hdr.group(1)})
+                    for dep, dlic in re.findall(r'^[ \t]*([a-zA-Z0-9_\-\.]+)(?:[ \t]*[>=<~!][^#\r\n]*)?[ \t]+#[ \t]*(?:license|licence)[ \t]*:[ \t]*([^\s\r\n#]+)', content, re.MULTILINE | re.IGNORECASE):
+                        manifests.append({"file": p, "project": dep, "license": dlic})
+                except Exception:
+                    pass
+            elif f == "go.mod":
+                p = os.path.join(root, f)
+                try:
+                    with open(p, "r", encoding="utf-8") as fh:
+                        content = fh.read()
+                    m_mod = re.search(r'^[ \t]*module[ \t]+([^\s\r\n]+)(?:[^\r\n]*//[ \t]*(?:license|licence)[ \t]*:[ \t]*([^\s\r\n#]+))?', content, re.MULTILINE | re.IGNORECASE)
+                    if m_mod and m_mod.group(2):
+                        manifests.append({"file": p, "project": m_mod.group(1), "license": m_mod.group(2)})
+                    for dep, dlic in re.findall(r'^[ \t]*(?:require[ \t]+)?([^\s\r\n]+)[ \t]+v[0-9\.\-a-zA-Z]+[^\r\n]*//[ \t]*(?:license|licence)[ \t]*:[ \t]*([^\s\r\n#]+)', content, re.MULTILINE | re.IGNORECASE):
+                        manifests.append({"file": p, "project": dep, "license": dlic})
+                except Exception:
+                    pass
+            elif f.endswith(".csproj"):
+                p = os.path.join(root, f)
+                try:
+                    with open(p, "r", encoding="utf-8") as fh:
+                        content = fh.read()
+                    m_id = re.search(r'<PackageId\s*>([^<]+)</PackageId>', content, re.IGNORECASE)
+                    m_lic = re.search(r'<PackageLicense(?:Expression)?\s*>([^<]+)</PackageLicense(?:Expression)?>', content, re.IGNORECASE)
+                    if m_lic:
+                        manifests.append({"file": p, "project": m_id.group(1).strip() if m_id else os.path.splitext(f)[0], "license": m_lic.group(1).strip()})
+                    for tag in re.findall(r'<PackageReference\s+[^>]+>', content, re.IGNORECASE):
+                        m_pkg = re.search(r'Include=[\"\']([^\"\']+)[\"\']', tag, re.IGNORECASE)
+                        m_pkglic = re.search(r'license=[\"\']([^\"\']+)[\"\']', tag, re.IGNORECASE)
+                        if m_pkg and m_pkglic:
+                            manifests.append({"file": p, "project": m_pkg.group(1), "license": m_pkglic.group(1)})
+                except Exception:
+                    pass
+            elif f == "packages.config":
+                p = os.path.join(root, f)
+                try:
+                    with open(p, "r", encoding="utf-8") as fh:
+                        content = fh.read()
+                    for tag in re.findall(r'<package\s+[^>]+>', content, re.IGNORECASE):
+                        m_id = re.search(r'id=[\"\']([^\"\']+)[\"\']', tag, re.IGNORECASE)
+                        m_lic = re.search(r'license=[\"\']([^\"\']+)[\"\']', tag, re.IGNORECASE)
+                        if m_id and m_lic:
+                            manifests.append({"file": p, "project": m_id.group(1), "license": m_lic.group(1)})
+                except Exception:
+                    pass
 
     return 0, manifests
 
@@ -530,5 +617,4 @@ def cmd_policy(args: argparse.Namespace) -> int:
     if rc == 0:
         print("[OK] Policy: Zero policy violations detected across governance rules.")
     return rc
-
 

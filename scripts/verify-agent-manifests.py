@@ -170,6 +170,29 @@ def find_agent_files(root_dir: str) -> List[str]:
     return sorted(matches)
 
 
+def find_skill_files(root_dir: str) -> List[str]:
+    matches = []
+    for current_root, dirs, files in os.walk(root_dir):
+        dirs[:] = [d for d in dirs if d not in EXCLUDED_DIRS and not d.startswith(".")]
+        for f in files:
+            if f in ("SKILL.md", "PRODUCT_SKILL.md"):
+                matches.append(os.path.join(current_root, f))
+    return sorted(matches)
+
+
+def verify_skill_manifest(file_path: str, max_lines: int = 200) -> Tuple[bool, List[str]]:
+    errors: List[str] = []
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+        if len(lines) > max_lines:
+            errors.append(f"Skill manifest exceeds {max_lines} lines ({len(lines)} > {max_lines}). Anti-sprawl ceiling violated.")
+    except Exception as e:
+        errors.append(f"Could not read file: {e}")
+    return len(errors) == 0, errors
+
+
+
 def verify_agent_manifest(
     file_path: str, root_dir: str, check_adrs: bool = True
 ) -> Tuple[bool, List[str]]:
@@ -260,6 +283,7 @@ def main():
         sys.exit(1)
 
     agent_files = find_agent_files(args.root)
+    skill_files = find_skill_files(args.root)
     results = {}
     total_errors = 0
 
@@ -269,23 +293,30 @@ def main():
         results[rel_path] = {"valid": valid, "errors": errors}
         total_errors += len(errors)
 
+    for sf in skill_files:
+        valid, errors = verify_skill_manifest(sf, max_lines=200)
+        rel_path = os.path.relpath(sf, args.root)
+        results[rel_path] = {"valid": valid, "errors": errors}
+        total_errors += len(errors)
+
     all_valid = total_errors == 0
 
     if args.json:
         out = {
             "root": args.root,
-            "total_manifests": len(agent_files),
+            "total_manifests": len(agent_files) + len(skill_files),
             "compliant": all_valid,
             "total_errors": total_errors,
             "manifests": results,
         }
         print(json.dumps(out, indent=2))
     else:
-        print("=== AGENT.md Manifest Verification ===")
-        print(f"Scanned {len(agent_files)} AGENT.md file(s) under '{args.root}'.\n")
+        print("=== AGENT.md & SKILL.md Manifest Verification ===")
+        total_files = len(agent_files) + len(skill_files)
+        print(f"Scanned {len(agent_files)} AGENT.md and {len(skill_files)} skill file(s) under '{args.root}'.\n")
 
-        if len(agent_files) == 0:
-            print("[INFO] No AGENT.md files found.")
+        if total_files == 0:
+            print("[INFO] No AGENT.md or skill files found.")
             sys.exit(0)
 
         for path, info in results.items():

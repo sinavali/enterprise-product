@@ -335,47 +335,30 @@ def cmd_run_many(args: argparse.Namespace) -> int:
     return 0
 
 
+def check_boundaries(root_dir: str = ".") -> int:
+    """Verifies architectural layer boundary integrity via ep_quality."""
+    try:
+        from scripts.ep_quality import check_boundaries as _check_boundaries
+    except ImportError:
+        from ep_quality import check_boundaries as _check_boundaries  # type: ignore[import-not-found,no-redef]
+    return _check_boundaries(root_dir)
+
+
 def cmd_graph(args: argparse.Namespace) -> int:
     root_dir = getattr(args, "root", ".") or "."
 
     if getattr(args, "check_boundaries", False):
-        print("=== EP-OS Architectural Boundary Integrity Check ===")
-        violations = []
-        for cur_root, dirs, files in os.walk(root_dir):
-            dirs[:] = [d for d in dirs if d not in {"node_modules", ".git", ".nx", "dist", "build"} and not d.startswith(".")]
-            norm_cur = cur_root.replace("\\", "/")
-            is_domain = "/domain" in norm_cur or norm_cur.endswith("/domain")
-            for f in files:
-                if f.endswith((".ts", ".js", ".go", ".py", ".rs", ".php")):
-                    f_path = os.path.join(cur_root, f)
-                    try:
-                        with open(f_path, "r", encoding="utf-8", errors="ignore") as fh:
-                            fc = fh.read()
-                        if is_domain:
-                            if re.search(r"(from ['\"](typeorm|prisma|sequelize|gorm|sqlalchemy|django\.db)['\"]|import .*gorm|org\.hibernate)", fc):
-                                violations.append((f_path, "Domain layer imports ORM/persistence framework"))
-                        if "/libs/" in norm_cur or "/packages/" in norm_cur:
-                            if re.search(r"from ['\"].*(apps|services)/", fc):
-                                violations.append((f_path, "Library/shared package imports application or service code"))
-                    except Exception:
-                        pass
-        if violations:
-            print("[FAIL] Architectural Boundary Violations Detected!", file=sys.stderr)
-            for f_path, reason in violations:
-                print(f"  ❌ {f_path}: {reason}", file=sys.stderr)
-            return 1
-        print("[OK] Architectural Boundary Integrity Verified. Zero illegal imports detected.")
-        return 0
+        return check_boundaries(root_dir)
 
     projects = []
-    for current_root, dirs, files in os.walk(root_dir):
+    for cur_root, dirs, files in os.walk(root_dir):
         dirs[:] = [d for d in dirs if d not in {"node_modules", ".git", ".nx", "dist", "build"} and not d.startswith(".")]
         if "project.json" in files:
-            p_file = os.path.join(current_root, "project.json")
+            p_file = os.path.join(cur_root, "project.json")
             try:
                 with open(p_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                    name = data.get("name", os.path.basename(current_root))
+                    name = data.get("name", os.path.basename(cur_root))
                     tags = data.get("tags", [])
                     profile = "Unknown"
                     scope = "General"
@@ -386,7 +369,7 @@ def cmd_graph(args: argparse.Namespace) -> int:
                             scope = t.split(":", 1)[1]
                     projects.append({
                         "name": name,
-                        "path": current_root,
+                        "path": cur_root,
                         "profile": profile,
                         "scope": scope,
                     })
@@ -397,8 +380,13 @@ def cmd_graph(args: argparse.Namespace) -> int:
         print(json.dumps(projects, indent=2))
         return 0
 
-    print("```mermaid\nflowchart TD\n    subgraph Enterprise Product Monorepo")
-    profiles = {"A": "Profile A (Backend & Core Services)", "B": "Profile B (Web Applications)", "C": "Profile C (Mobile Clients)", "D": "Profile D (Shared Contracts & Libs)"}
+    print("```mermaid\nflowchart TD\n    subgraph Monorepo")
+    profiles = {
+        "A": "Profile A (Backend & Core Services)",
+        "B": "Profile B (Web Applications)",
+        "C": "Profile C (Mobile Clients)",
+        "D": "Profile D (Shared Contracts & Libs)",
+    }
     for prof_key, prof_label in profiles.items():
         matching = [p for p in projects if p["profile"] == prof_key]
         if matching:
@@ -416,4 +404,3 @@ def cmd_graph(args: argparse.Namespace) -> int:
 
     print("    end\n```")
     return 0
-

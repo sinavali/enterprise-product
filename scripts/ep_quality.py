@@ -44,7 +44,7 @@ EXCLUDED_DIRS = {
     ".venv", ".nx", "coverage", "__pycache__", ".ep", "templates",
 }
 
-CODE_EXTS = {".ts", ".tsx", ".js", ".jsx", ".py", ".go", ".rs", ".cs", ".php", ".java", ".kt"}
+CODE_EXTS = {".ts", ".tsx", ".js", ".jsx", ".py", ".go", ".rs", ".cs", ".php", ".java", ".kt", ".dart"}
 
 
 def _is_excluded(path: str) -> bool:
@@ -368,21 +368,19 @@ def check_ephemeral_integration_tests(root_dir: str = ".", files: Optional[List[
 # 5. Architectural Layer Purity & Test Coverage Validator
 # ------------------------------------------------------------------------------
 
-DOMAIN_ORM_PATTERNS = [
-    # Python ORMs
-    r"(?:from|import)\s+(?:sqlalchemy|django\.db|peewee|tortoise)\b",
-    # TypeScript / JavaScript ORMs
-    r"from\s+['\"](?:typeorm|@prisma\/client|prisma|sequelize|mongoose|mikro-orm)['\"]",
-    r"require\s*\(\s*['\"](?:typeorm|@prisma\/client|prisma|sequelize|mongoose|mikro-orm)['\"]\s*\)",
-    # Go ORMs
-    r"(?:gorm\.io\/gorm|github\.com\/jinzhu\/gorm|entgo\.io\/ent)",
-    # Java / Kotlin JPA & Hibernate
-    r"(?:org\.hibernate|javax\.persistence|jakarta\.persistence|org\.springframework\.data)",
-    # C# EF Core & ADO
-    r"(?:Microsoft\.EntityFrameworkCore|System\.Data\.SqlClient)",
-    # Rust ORMs
-    r"(?:diesel::|sea_orm::)",
+BOUNDARY_DOMAIN_RULES = [
+    (re.compile(r"((?:from\s+['\"]?|(?:import|using|use)\s+.*)(?:typeorm|prisma|sequelize|gorm|sqlalchemy|django\.db|tortoise|peewee|sqlmodel|sea_orm|diesel|Microsoft\.EntityFrameworkCore|System\.Data|Dapper|NHibernate|javax\.persistence|jakarta\.persistence|org\.springframework\.data|androidx\.room|exposed|package:(?:sqflite|drift|hive|isar)))", re.IGNORECASE), "Domain layer imports ORM/persistence framework"),
+    (re.compile(r"((?:from\s+['\"]?|(?:import|using|use)\s+.*)(?:express|fastify|koa|gin|fiber|echo|fastapi|flask|django|actix|axum|Microsoft\.AspNetCore|org\.springframework|io\.ktor|androidx\b|package:(?:flutter|shelf)))", re.IGNORECASE), "Domain layer imports web/transport framework"),
+    (re.compile(r"((?:from|import|require)\s*\(?['\"][^'\"]*[\/\\](?:adapters?|infrastructure|infra|controllers?|routes?)(?:\b|[\/\\'\"\?])|^\s*(?:from\s+[\.\w]*\b(?:adapters?|infrastructure|infra|controllers?|routes?)\b[\.\w]*\s+import|import\s+[\.\w]*\b(?:adapters?|infrastructure|infra|controllers?|routes?)\b)|using\s+[\w\.]*\b(?:Adapters?|Infrastructure|Infra|Controllers?|Routes?)\b|(?:import|use)\s+[\w\\:\.]*\b(?:adapters?|infrastructure|infra|controllers?|routes?)\b)", re.IGNORECASE | re.MULTILINE), "Domain layer imports external adapters/infrastructure directly"),
+    (re.compile(r"((?:from|import|require)\s*\(?['\"][^'\"]*[\/\\]application(?:\b|[\/\\'\"\?])|^\s*(?:from\s+[\.\w]*\bapplication\b[\.\w]*\s+import|import\s+[\.\w]*\bapplication\b)|using\s+[\w\.]*\bApplication\b|(?:import|use)\s+[\w\\:\.]*\b[aA]pplication\b)", re.IGNORECASE | re.MULTILINE), "Domain layer imports application layer (inverted dependency)"),
+    (re.compile(r"((?:from|import|require)\s*\(?['\"][^'\"]*(?:@aws-sdk|aws-sdk|google-cloud|@google-cloud|cloud\.google\.com|azure-sdk|@azure|stripe|twilio|sendgrid)[^'\"]*['\"]|^\s*(?:from\s+(?:boto3|botocore|aioboto3|google\.cloud|azure\.(?:storage|identity|cosmos|servicebus)|stripe|twilio|sendgrid)\b|import\s+(?:boto3|botocore|aioboto3|google\.cloud|azure\.(?:storage|identity|cosmos|servicebus)|stripe|twilio|sendgrid)\b)|using\s+(?:Amazon|AWSSDK|Google\.Cloud|Azure\.Storage|Azure\.Identity|Azure\.Messaging|Stripe)\b|(?:import|use)\s+[\w\\:\.]*(?:awssdk|amazonaws|google\.cloud|azure|stripe|Aws\\|Google\\Cloud)\b)", re.IGNORECASE | re.MULTILINE), "Domain layer imports Cloud SDK (AWS/GCP/Azure/Stripe)"),
+    (re.compile(r"((?:from|import|require)\s*\(?['\"](?:node:)?(?:axios|node-fetch|cross-fetch|got|superagent|undici|http|https|net|dgram|net\/http|net\/url|resty|package:http|package:dio)(?:[\/'\"])?|^\s*(?:from\s+(?:requests|httpx|aiohttp|urllib|urllib3|http\.client)\b|import\s+(?:requests|httpx|aiohttp|urllib|urllib3|http\.client)\b)|using\s+(?:System\.Net\.Http|RestSharp)\b|(?:import|use)\s+[\w\\:\.]*(?:java\.net\.http|okhttp3|retrofit2|apache\.http|GuzzleHttp)\b)", re.IGNORECASE | re.MULTILINE), "Domain layer imports network transport / HTTP client library"),
 ]
+
+BOUNDARY_APP_RULES = [
+    (re.compile(r"((?:from|import|require)\s*\(?['\"][^'\"]*[\/\\](?:adapters?|infrastructure|infra)(?:\b|[\/\\'\"\?])|^\s*(?:from\s+[\.\w]*\b(?:adapters?|infrastructure|infra)\b[\.\w]*\s+import|import\s+[\.\w]*\b(?:adapters?|infrastructure|infra)\b)|using\s+[\w\.]*\b(?:Adapters?|Infrastructure|Infra)\b|(?:import|use)\s+[\w\\:\.]*\b(?:adapters?|infrastructure|infra)\b)", re.IGNORECASE | re.MULTILINE), "Application layer imports concrete adapters/infrastructure directly"),
+]
+DOMAIN_ORM_PATTERNS = [r"(?:from|import)\s+(?:sqlalchemy|django\.db|peewee|tortoise)\b"]
 
 
 def check_layer_coverage(root_dir: str = ".", files: Optional[List[str]] = None) -> List[Dict[str, Any]]:
@@ -390,12 +388,12 @@ def check_layer_coverage(root_dir: str = ".", files: Optional[List[str]] = None)
     domain_files = []
 
     if files is not None:
-        domain_files = [f for f in files if "/domain/" in f.replace("\\", "/") and any(f.endswith(ext) for ext in CODE_EXTS) and os.path.isfile(os.path.join(root_dir, f))]
+        domain_files = [f for f in files if "domain" in f.replace("\\", "/").split("/") and any(f.endswith(ext) for ext in CODE_EXTS) and os.path.isfile(os.path.join(root_dir, f))]
     else:
         for root, dirs, fnames in os.walk(root_dir):
             dirs[:] = [d for d in dirs if d not in EXCLUDED_DIRS and not d.startswith(".")]
-            norm_root = root.replace("\\", "/")
-            if "/domain/" in norm_root or norm_root.endswith("/domain"):
+            parts = root.replace("\\", "/").split("/")
+            if "domain" in parts:
                 for fn in fnames:
                     _, ext = os.path.splitext(fn)
                     if ext in CODE_EXTS:
@@ -414,18 +412,20 @@ def check_layer_coverage(root_dir: str = ".", files: Optional[List[str]] = None)
             continue
 
         # Check purity
-        for pat in DOMAIN_ORM_PATTERNS:
-            for idx, line in enumerate(content.splitlines(), start=1):
-                if re.search(pat, line):
-                    findings.append({
-                        "rule": "QUALITY-DOMAIN-LAYER-PURITY",
-                        "severity": "blocking",
-                        "file": rel_path,
-                        "line": idx,
-                        "snippet": line.strip()[:100],
-                        "description": "Domain layer imports ORM or persistence framework; violates DDD hexagonal purity.",
-                    })
-                    break
+        clean_lines = [l for l in re.sub(r"/\*.*?\*/", "", content, flags=re.DOTALL).splitlines() if l.strip() and not l.strip().startswith(("//", "#", "*"))]
+        clean_code = "\n".join(clean_lines)
+        for pat, desc in BOUNDARY_DOMAIN_RULES:
+            m = pat.search(clean_code)
+            if m:
+                findings.append({
+                    "rule": "QUALITY-DOMAIN-LAYER-PURITY",
+                    "severity": "blocking",
+                    "file": rel_path,
+                    "line": 1,
+                    "snippet": m.group(0).strip()[:100],
+                    "description": f"{desc}; violates DDD hexagonal purity.",
+                })
+                break
 
         # Check corresponding unit test existence
         base_name, _ = os.path.splitext(os.path.basename(rel_path))
@@ -495,6 +495,150 @@ def check_layer_coverage(root_dir: str = ".", files: Optional[List[str]] = None)
     return findings
 
 
+AUTH_INDICATORS = [
+    r"@UseGuards\b",
+    r"@Auth\b",
+    r"@Authorize\b",
+    r"@RequireAuth\b",
+    r"@RequirePermission\b",
+    r"@Permission\b",
+    r"@jwt_required\b",
+    r"@login_required\b",
+    r"authMiddleware",
+    r"requireAuth",
+    r"authenticate",
+    r"authenticated",
+    r"hasRole",
+    r"hasPermission",
+    r"CheckAuth",
+    r"VerifyToken",
+    r"AuthorizeToken",
+    r"permission_classes",
+    r"IsAuthenticated",
+    r"middleware\.(?:auth|jwt)",
+    r"Depends\s*\(\s*(?:get_current_user|auth|verify|get_current_active_user)",
+    r"Security\s*\(",
+    r"@PreAuthorize\b",
+    r"@Secured\b",
+    r"@RolesAllowed\b",
+]
+
+SENSITIVE_ENDPOINT_PATTERNS = [
+    (r"(?:get|post|put|delete|patch)\s*\(\s*['\"](?:/api)?/users\b", "Unrestricted /users collection listing"),
+    (r"@(?:Get|Post|Put|Delete|Patch|RequestMapping|GetMapping|PostMapping|PutMapping|DeleteMapping|PatchMapping)\s*\(\s*(?:value\s*=\s*)?['\"](?:/api)?/users\b", "Unrestricted /users collection listing"),
+    (r"@(?:app|bp|router|api)?\.?route\s*\(\s*['\"](?:/api)?/users\b", "Unrestricted /users collection listing"),
+    (r"(?:get|post|put|delete|patch)\s*\(\s*['\"](?:/api)?/admin\b", "Unprotected /admin route"),
+    (r"@(?:Get|Post|Put|Delete|Patch|RequestMapping|GetMapping|PostMapping|PutMapping|DeleteMapping|PatchMapping)\s*\(\s*(?:value\s*=\s*)?['\"](?:/api)?/admin\b", "Unprotected /admin route"),
+    (r"@(?:app|bp|router|api)?\.?route\s*\(\s*['\"](?:/api)?/admin\b", "Unprotected /admin route"),
+    (r"(?:get|post|put|delete|patch)\s*\(\s*['\"](?:/api)?/accounts\b", "Unprotected /accounts route"),
+    (r"@(?:Get|Post|Put|Delete|Patch|RequestMapping|GetMapping|PostMapping|PutMapping|DeleteMapping|PatchMapping)\s*\(\s*(?:value\s*=\s*)?['\"](?:/api)?/accounts\b", "Unprotected /accounts route"),
+    (r"@(?:app|bp|router|api)?\.?route\s*\(\s*['\"](?:/api)?/accounts\b", "Unprotected /accounts route"),
+]
+
+def check_unprotected_endpoints(root_dir: str = ".", files: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+    findings: List[Dict[str, Any]] = []
+    target_files = []
+
+    if files is not None:
+        target_files = [f for f in files if any(f.endswith(ext) for ext in CODE_EXTS) and os.path.isfile(os.path.join(root_dir, f))]
+    else:
+        for root, dirs, fnames in os.walk(root_dir):
+            dirs[:] = [d for d in dirs if d not in EXCLUDED_DIRS and not d.startswith(".")]
+            for fn in fnames:
+                _, ext = os.path.splitext(fn)
+                if ext in CODE_EXTS:
+                    rel_p = os.path.relpath(os.path.join(root, fn), root_dir).replace("\\", "/")
+                    target_files.append(rel_p)
+
+    route_path_re = re.compile(r"(?:controllers?|handlers?|routes?|api|endpoints?)(?:[\\/]|[._\-])", re.IGNORECASE)
+    auth_re = re.compile("|".join(AUTH_INDICATORS), re.IGNORECASE)
+
+    for rel_path in target_files:
+        if _is_excluded(rel_path) or "test" in rel_path.lower() or "spec" in rel_path.lower():
+            continue
+        if not route_path_re.search(rel_path):
+            continue
+
+        full_path = os.path.join(root_dir, rel_path)
+        try:
+            with open(full_path, "r", encoding="utf-8", errors="ignore") as fh:
+                content = fh.read()
+        except Exception:
+            continue
+
+        if "ep-auth-exempt" in content or "public" in rel_path.lower():
+            continue
+
+        if re.search(r"@(?:UseGuards|ControllerAuth|RequireAuth|Authorize)\b", content, re.IGNORECASE):
+            continue
+
+        lines = content.splitlines()
+        for idx, line in enumerate(lines, start=1):
+            for pat, desc in SENSITIVE_ENDPOINT_PATTERNS:
+                if re.search(pat, line, re.IGNORECASE):
+                    start_w = max(0, idx - 10)
+                    end_w = min(len(lines), idx + 10)
+                    window_text = "\n".join(lines[start_w:end_w])
+                    if not auth_re.search(window_text):
+                        findings.append({
+                            "rule": "QUALITY-UNPROTECTED-ENDPOINT",
+                            "severity": "blocking",
+                            "file": rel_path,
+                            "line": idx,
+                            "snippet": line.strip()[:100],
+                            "description": f"Unprotected endpoint detected without authentication/authorization guards ({desc}).",
+                        })
+                    break
+
+    return findings
+
+
+def check_boundaries(root_dir: str = ".") -> int:
+    print("=== EP-OS Architectural Boundary Integrity Check ===")
+    violations = []
+    for cur_root, dirs, files in os.walk(root_dir):
+        dirs[:] = [d for d in dirs if d not in {"node_modules", ".git", ".nx", "dist", "build"} and not d.startswith(".")]
+        norm_cur = cur_root.replace("\\", "/")
+        cur_parts = set(norm_cur.split("/"))
+        is_domain = "domain" in cur_parts
+        is_application = "application" in cur_parts
+        is_lib = bool(cur_parts.intersection({"libs", "packages"}))
+        for f in files:
+            if any(f.endswith(ext) for ext in CODE_EXTS):
+                f_path = os.path.join(cur_root, f)
+                try:
+                    with open(f_path, "r", encoding="utf-8", errors="ignore") as fh:
+                        fc = fh.read()
+                    if "ep-boundary-exempt" in fc:
+                        continue
+                    clean_lines = [l for l in re.sub(r"/\*.*?\*/", "", fc, flags=re.DOTALL).splitlines() if l.strip() and not l.strip().startswith(("//", "#", "*"))]
+                    clean_code = "\n".join(clean_lines)
+
+                    if is_domain:
+                        for pat, reason in BOUNDARY_DOMAIN_RULES:
+                            if pat.search(clean_code):
+                                violations.append((f_path, reason))
+                                break
+                    if is_application:
+                        for pat, reason in BOUNDARY_APP_RULES:
+                            if pat.search(clean_code):
+                                violations.append((f_path, reason))
+                                break
+                    if is_lib:
+                        if re.search(r"(from\s+['\"].*(?:apps|services)/|from\s+(?:apps|services)\.|import\s+['\"].*(?:apps|services)/|import\s+(?:apps|services)\.|using\s+(?:apps|services)\.|use\s+(?:apps|services)[\\]|package:(?:apps|services)/)", clean_code):
+                            violations.append((f_path, "Library/shared package imports application or service code"))
+                except Exception:
+                    pass
+    if violations:
+        print("[FAIL] Architectural Boundary Violations Detected!", file=sys.stderr)
+        for f_path, reason in violations:
+            print(f"  ❌ {f_path}: {reason}", file=sys.stderr)
+        return 1
+    print("[OK] Architectural Boundary Integrity Verified. Zero illegal imports detected.")
+    return 0
+
+
+
 # ------------------------------------------------------------------------------
 # Combined Quality Gate Execution & Verification Orchestrator
 # ------------------------------------------------------------------------------
@@ -502,6 +646,7 @@ def check_layer_coverage(root_dir: str = ".", files: Optional[List[str]] = None)
 def run_all_quality_checks(root_dir: str = ".", files: Optional[List[str]] = None) -> List[Dict[str, Any]]:
     findings: List[Dict[str, Any]] = []
     findings.extend(check_mutating_route_idempotency(root_dir, files=files))
+    findings.extend(check_unprotected_endpoints(root_dir, files=files))
     findings.extend(check_graceful_shutdown(root_dir, files=files))
     findings.extend(check_service_runbooks(root_dir, files=files))
     findings.extend(check_ephemeral_integration_tests(root_dir, files=files))
@@ -561,7 +706,7 @@ def run_enterprise_verify(a: argparse.Namespace) -> int:
     print("=== 1. Verifying Nx Target Contracts ===")
     nx_res = subprocess.run([sys.executable, os.path.join(SCRIPTS_DIR, "verify-nx-targets.py"), "--root", root_dir], timeout=30).returncode
 
-    print("\n=== 2. Linting AGENT.md Manifests ===")
+    print("\n=== 2. Linting AGENT.md & SKILL.md Manifests ===")
     agent_res = subprocess.run([sys.executable, os.path.join(SCRIPTS_DIR, "verify-agent-manifests.py"), "--root", root_dir], timeout=30).returncode
 
     print("\n=== 3. Checking Open NC Item Expiration ===")
@@ -586,7 +731,7 @@ def run_enterprise_verify(a: argparse.Namespace) -> int:
     surf_res = cmd_surface(argparse.Namespace(action="check-diff", file=None, surface_file=None, output=None, base=fast_base, strict=False))
 
     print("\n=== 7. Verifying Architectural Boundary Integrity ===")
-    bound_res = cmd_graph(argparse.Namespace(root=root_dir, check_boundaries=True))
+    bound_res = check_boundaries(root_dir)
 
     print("\n=== 8. Scanning Dependency Licenses & Copyleft Contagion ===")
     lic_res = cmd_license(argparse.Namespace(action="check", root=root_dir))
@@ -602,8 +747,6 @@ def run_enterprise_verify(a: argparse.Namespace) -> int:
 
     print("\n=== 12. Running Audit Diff Gate ===")
     audit_cmd = [sys.executable, os.path.join(SCRIPTS_DIR, "audit-runner.py"), "--scope", root_dir, "--diff", fast_base]
-    audit_res = subprocess.run(audit_cmd, timeout=300).returncode
-
     audit_res = subprocess.run(audit_cmd, timeout=300).returncode
 
     all_passed = (

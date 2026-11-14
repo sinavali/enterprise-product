@@ -236,6 +236,8 @@ class TestDefectRemediations(unittest.TestCase):
         finally:
             if os.path.isfile(ms_file):
                 os.remove(ms_file)
+            if os.path.isdir(ms_dir) and not os.listdir(ms_dir):
+                os.rmdir(ms_dir)
 
     # --------------------------------------------------------------------------
     # DEFECT-11: Argument Aliases (--scope, --output, --package-json, --apply)

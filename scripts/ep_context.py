@@ -71,6 +71,25 @@ def collect_files_from_surface(root_dir: str = ".") -> List[str]:
             needs_fallback = True
 
     if needs_fallback:
+        try:
+            branch_res = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=root_dir, capture_output=True, text=True, check=False, timeout=10)
+            branch = branch_res.stdout.strip() if branch_res.returncode == 0 else "main"
+            branch_slug = re.sub(r"[^a-zA-Z0-9_\-]", "_", branch)
+            for cand in [
+                os.path.join(root_dir, ".ep", "surfaces", f"{branch_slug}.md"),
+                os.path.join(root_dir, ".ep", "surfaces", f"{branch_slug}.json"),
+                os.path.join(root_dir, ".ep", "surfaces", "active.md"),
+                os.path.join(root_dir, ".ep", "surfaces", "active.json"),
+                os.path.join(root_dir, ".ep", "surface.md"),
+            ]:
+                if os.path.exists(cand):
+                    target_file = cand
+                    needs_fallback = False
+                    break
+        except Exception:
+            pass
+
+    if needs_fallback:
         changes_dir = os.path.join(root_dir, "docs", "changes")
         if os.path.exists(changes_dir):
             changes = sorted(

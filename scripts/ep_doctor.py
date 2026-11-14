@@ -149,11 +149,31 @@ def check_container_engine(root_dir: str = ".") -> Tuple[bool, str]:
 def check_product_skill(root_dir: str = ".") -> Tuple[bool, str]:
     candidates = [
         os.path.join(root_dir, "PRODUCT_SKILL.md"),
+        os.path.join(root_dir, "SKILL.md"),
         os.path.join(root_dir, ".ep", "SKILL.md"),
     ]
     if any(os.path.isfile(c) for c in candidates):
         return True, "Tailored Product Skill active."
     return False, "No tailored PRODUCT_SKILL.md found (run 'ep skill generate')."
+
+
+def check_skill_line_ceiling(root_dir: str = ".") -> Tuple[bool, str]:
+    skill_path = os.path.join(root_dir, "SKILL.md")
+    if not os.path.isfile(skill_path):
+        alt_path = os.path.join(root_dir, "PRODUCT_SKILL.md")
+        if os.path.isfile(alt_path):
+            skill_path = alt_path
+        else:
+            return True, "No SKILL.md or PRODUCT_SKILL.md present."
+    try:
+        with open(skill_path, "r", encoding="utf-8") as f:
+            line_count = len(f.readlines())
+    except Exception as e:
+        return False, f"Could not read skill file: {e}"
+    name = os.path.basename(skill_path)
+    if line_count > 200:
+        return False, f"{name} exceeds 200 lines ({line_count} > 200). Anti-sprawl ceiling violated."
+    return True, f"{name} respects <= 200 line ceiling ({line_count}/200 lines)."
 
 
 def generate_product_skill(root_dir: str = ".", output_path: Optional[str] = None) -> str:
@@ -254,6 +274,7 @@ def run_doctor(root_dir: str = ".", heal: bool = False) -> int:
         ("Agent Manifest (AGENT.md)", check_manifests),
         ("OCI Container Engine", check_container_engine),
         ("Tailored Product Skill", check_product_skill),
+        ("SKILL.md Line Ceiling Gate", check_skill_line_ceiling),
     ]
 
     failed_checks = []

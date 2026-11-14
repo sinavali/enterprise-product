@@ -37,7 +37,7 @@ def atomic_write(filepath: str, content: str, mode: str = "w", encoding: str = "
     """
     dir_name = os.path.dirname(os.path.abspath(filepath))
     os.makedirs(dir_name, exist_ok=True)
-    tmp_file = f"{filepath}.tmp.{os.getpid()}"
+    tmp_file = f"{filepath}.tmp.{os.getpid()}.{os.urandom(6).hex()}"
     with open(tmp_file, mode, encoding=encoding) as f:
         f.write(content)
     os.replace(tmp_file, filepath)
@@ -666,7 +666,7 @@ def cmd_perf(args: argparse.Namespace) -> int:
         return subprocess.run(cmd, timeout=600).returncode
 
     print(f"[WARN] Neither '{tool}' nor an OCI container engine was detected.", file=sys.stderr)
-    print("       Per 'references/optional-tooling.md', performance testing degrades gracefully.", file=sys.stderr)
+    print("       Per 'docs/ARCHITECTURE.md § 4', performance testing degrades gracefully.", file=sys.stderr)
     return 0
 
 

@@ -6,6 +6,7 @@ ep_vcs.py — VCS Provider Abstraction, Multi-Tier Branching & Production Gate f
 import argparse
 import datetime
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -285,7 +286,7 @@ exec python3 "${DIR}/scripts/ep.py" "$@"
         if out_dir:
             os.makedirs(out_dir, exist_ok=True)
 
-        tmp_output = f"{output_path}.tmp.{os.getpid()}"
+        tmp_output = f"{output_path}.tmp.{os.getpid()}.{os.urandom(6).hex()}"
         with zipfile.ZipFile(tmp_output, "w", compression=zipfile.ZIP_DEFLATED) as zf:
             # 1. Add root executable entrypoint
             zinfo = zipfile.ZipInfo("ep")
@@ -332,4 +333,122 @@ exec python3 "${DIR}/scripts/ep.py" "$@"
     except Exception as e:
         print(f"[ERROR] Failed to create release zip binary: {e}", file=sys.stderr)
         return 1
+
+
+def cmd_release(args: argparse.Namespace) -> int:
+    action = args.action
+    version = getattr(args, "version", None) or getattr(args, "version_flag", None)
+
+    if action == "create":
+        if not version or not re.match(r"^v?\d+\.\d+\.\d+", version):
+            print(f"[ERROR] Version '{version}' does not match SemVer format (vMAJOR.MINOR.PATCH).", file=sys.stderr)
+            return 1
+        formatted_version = f"v{version.lstrip('v')}"
+        tag_res = subprocess.run(["git", "tag", "-s", formatted_version, "-m", f"Release {formatted_version}"], check=False, timeout=30)
+        if tag_res.returncode != 0:
+            res = subprocess.run(["git", "tag", "-a", formatted_version, "-m", f"Release {formatted_version}"], check=False, timeout=30)
+            if res.returncode != 0:
+                return res.returncode
+        print(f"[OK] Created release tag '{formatted_version}'.")
+        return 0
+    elif action == "finalize":
+        cur_branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, check=False, timeout=10).stdout.strip()
+        is_prod = getattr(args, "prod", False) or cur_branch == "prod"
+        version_label = version
+        today_str = datetime.date.today().isoformat()
+        rel_dir = "docs/releases"
+        os.makedirs(rel_dir, exist_ok=True)
+        rel_filename = f"RELEASE_{version_label}.md" if version_label else f"RELEASE_{today_str}.md"
+        rel_file = os.path.join(rel_dir, rel_filename)
+        changes_dir = "docs/changes"
+        summaries = []
+
+        res_tag = subprocess.run(["git", "describe", "--tags", "--abbrev=0"], capture_output=True, text=True, check=False, timeout=10)
+        prev_tag = res_tag.stdout.strip() if res_tag.returncode == 0 else None
+
+        scoped_files = set()
+        if prev_tag:
+            res_diff = subprocess.run(["git", "diff", "--name-only", "--diff-filter=AM", f"{prev_tag}..HEAD", "--", changes_dir], capture_output=True, text=True, check=False, timeout=10)
+            if res_diff.returncode == 0:
+                for f in res_diff.stdout.splitlines():
+                    if f.strip().endswith(".md"):
+                        scoped_files.add(os.path.basename(f.strip()))
+            res_status = subprocess.run(["git", "status", "--porcelain", "--", changes_dir], capture_output=True, text=True, check=False, timeout=10)
+            if res_status.returncode == 0:
+                for line in res_status.stdout.splitlines():
+                    if len(line) >= 4:
+                        p = line[3:].strip()
+                        if " -> " in p:
+                            p = p.split(" -> ")[1].strip()
+                        if p.endswith(".md"):
+                            scoped_files.add(os.path.basename(p))
+
+        if os.path.exists(changes_dir):
+            for cf in sorted(os.listdir(changes_dir)):
+                if cf.endswith(".md"):
+                    if not prev_tag or (scoped_files and cf in scoped_files):
+                        with open(os.path.join(changes_dir, cf), "r", encoding="utf-8", errors="ignore") as fh:
+                            summaries.append(f"### {cf}\n\n" + fh.read())
+
+        header_title = f"Production Release Notes: {version_label or today_str}" if is_prod else f"Release Notes: {version_label or today_str}"
+        rel_content = (
+            f"# {header_title}\n\n- **Date**: `{today_str}`\n- **Branch**: `{cur_branch}`\n"
+            f"- **Production**: `{is_prod}`\n"
+            f"- **Change Surfaces Included**: `{len(summaries)}`\n\n## Change Summaries\n\n"
+            + ("\n\n---\n\n".join(summaries) if summaries else "_No individual Change Surface files recorded._\n")
+        )
+        with open(rel_file, "w", encoding="utf-8") as fh:
+            fh.write(rel_content)
+        print(f"[OK] Generated release notes at '{rel_file}'.")
+        print(f"[OK] Finalized release progression on branch '{cur_branch}'.")
+        return 0
+    elif action == "pack":
+        return pack_release(args)
+    return 0
+
+
+def cmd_milestone(args: argparse.Namespace) -> int:
+    action = args.action
+    name = getattr(args, "name", None)
+    ms_dir = "docs/milestones"
+    os.makedirs(ms_dir, exist_ok=True)
+
+    if action == "create":
+        if not name:
+            print("[ERROR] Milestone name is required for create action.", file=sys.stderr)
+            return 1
+        ms_file = os.path.join(ms_dir, f"{name}.md")
+        if not os.path.exists(ms_file):
+            with open(ms_file, "w", encoding="utf-8") as fh:
+                fh.write(
+                    f"# Milestone: {name}\n\n- **Target Due Date**: `{getattr(args, 'due', None) or 'TBD'}`\n- **Status**: `IN_PROGRESS`\n"
+                    "- **Associated Subprojects**:\n  - `TBD`\n\n## Delivery Objectives\n"
+                    "- [ ] Implement core features\n- [ ] 10-Dimension Audit clean\n- [ ] Ephemeral container tests passing\n"
+                )
+        print(f"[OK] Created milestone manifest at '{ms_file}'.")
+        return 0
+    elif action in ("status", "check"):
+        ms_files = [os.path.join(ms_dir, f) for f in os.listdir(ms_dir) if f.endswith(".md")] if os.path.exists(ms_dir) else []
+        if name:
+            ms_files = [f for f in ms_files if os.path.basename(f) == f"{name}.md" or os.path.basename(f).startswith(name)]
+        if not ms_files:
+            print("[INFO] No matching milestones found.")
+            return 0
+        print(f"=== EP-OS Milestone {action.upper()} ({len(ms_files)} milestone(s)) ===")
+        all_completed = True
+        for mf in ms_files:
+            with open(mf, "r", encoding="utf-8", errors="ignore") as fh:
+                c = fh.read()
+            total_items = len(re.findall(r"-\s*\[[ xX]\]", c))
+            done_items = len(re.findall(r"-\s*\[[xX]\]", c))
+            is_done = total_items > 0 and total_items == done_items
+            if not is_done:
+                all_completed = False
+            status = "DONE" if is_done else "IN_PROGRESS"
+            pct = f"({done_items}/{total_items} items)" if total_items > 0 else "(0 items)"
+            print(f"  • {os.path.basename(mf)[:-3]}: [{status}] {pct}")
+        if action == "check" and not all_completed:
+            print("[WARN] Some milestones have incomplete checklist items.", file=sys.stderr)
+        return 0
+    return 0
 

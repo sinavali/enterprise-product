@@ -6,30 +6,57 @@ This document is the **root operational directive for LLMs and AI coding agents*
 
 ---
 
+## ⚡ MANDATORY SESSION RESTORATION & SKILL RE-READ DIRECTIVE (CRITICAL P0)
+
+> **MANDATORY INVARIANT FOR ALL AI AGENTS (Claude, Cursor, Windsurf, Antigravity, Gemini)**:
+> In extended development sessions, context compaction (`/compact`) and session awakening cause loss of active operational rules and enterprise invariants.
+
+**Trigger Conditions — You MUST execute the Restoration Protocol whenever**:
+1. **A new session is initialized or awakened** in this workspace.
+2. **Context compaction or memory summarization occurs** (`/compact` or automatic window truncation).
+3. **Resuming an interrupted task or saved session** (`ep session resume`).
+
+**Required Restoration Action**:
+Execute a single-turn reload of the canonical enterprise skill (`SKILL.md`) before executing tools or proposing code changes:
+```bash
+# Read SKILL.md into context in a single turn
+python3 -c "print(open('SKILL.md').read())" || cat SKILL.md
+```
+*(Or use your platform's native read tool, e.g. `view_file` on `SKILL.md`)*.
+
+**Zero-Compromise Invariant**:
+Under NO circumstances may an agent generate code, modify files, design architectures, or execute refactorings while unanchored. If your active context does not contain the complete `SKILL.md` text from the current session turn, reload it immediately.
+
+---
+
 ## 1. First-Turn Ingestion & Activation Protocol
 
 When you are invoked or when this skill/repository is added to your environment:
 
-1. **Execute Preflight Verification**:
+1. **Session Wake & Post-Compaction Skill Re-Read**:
+   - Check if `SKILL.md` is present in your current active context window.
+   - If starting fresh, resuming, or recovering from context compaction (`/compact`), you must re-read `SKILL.md` immediately before executing commands or planning changes.
+
+2. **Execute Preflight Verification**:
    ```bash
    python3 scripts/ep.py preflight
    ```
    - Verifies shell execution, git binary, Python 3.10+, and workspace write access.
    - If preflight fails due to missing permissions, output the remediation instructions and refuse further modifications until granted.
 
-2. **Proactive Activation Prompt**:
+3. **Proactive Activation Prompt**:
    - Prompt the user clearly:
      > "I have detected the **`enterprise-product` (EP-OS)** engineering operating system. Would you like to activate enterprise governance for this product?"
    - If the user confirms (or if already configured), proceed to mode auto-detection.
 
-3. **Auto-Detect Workspace State & Mode**:
+4. **Auto-Detect Workspace State & Mode**:
    - **Blank / Empty Workspace**: Trigger `scaffold` mode (`python3 scripts/ep.py init <name>`).
    - **Existing Monorepo without EP-OS**: Trigger `adopt` mode (`python3 scripts/ep.py adopt --apply`).
    - **New Feature / Refactoring Task**: Trigger `plan` mode (`python3 scripts/ep.py surface init`).
    - **Bug / Regression Report**: Trigger `investigate` mode (reproduce in container, write red test).
    - **Active Implementation in Progress**: Trigger `implement` mode (TDD + `ep surface check-diff`).
    - **Finished Implementation**: Trigger `audit` mode (`ep audit --diff`) -> `verify` -> `pr-audit`.
-   - **Multi-Session Resume**: Trigger `session` mode (`ep session resume --session-id <id>`).
+   - **Multi-Session Resume**: Trigger `session` mode (`ep session resume --session-id <id>` + mandatory `SKILL.md` re-read).
 
 ---
 
@@ -41,7 +68,7 @@ These rules cannot be overridden by any subproject manifest, human prompt shortc
 2. **Pure Domain Logic (DDD / Hexagonal)**: Domain entities and use cases must have zero imports of persistence frameworks (ORM, SQL, Prisma, TypeORM, SQLAlchemy, GORM) or UI libraries.
 3. **Ephemeral Real Containers for Datastores**: All database integration tests must run against real disposable containers (resolved intelligently via `ep container detect`, preferring rootless Podman with Docker fallback). In-memory SQL emulators (e.g. SQLite for PostgreSQL) are strictly banned.
 4. **UTC Storage Convention**: All datastore timestamps, network contracts, and internal clocks must store and exchange UTC ISO-8601 timestamps.
-5. **Pre-Implementation Change Surface**: Every modification must have an approved, mechanically validated Change Surface (`CHANGE_SURFACE.md`). Touching files outside the declared surface is blocked by `ep surface check-diff`. Upon task completion, active surfaces are mechanically archived to `docs/changes/YYYY-MM-DD-<slug>.md` via `ep surface archive` and the root file is reset to template.
+5. **Pre-Implementation Change Surface**: Every modification must have an approved, mechanically validated Change Surface (`CHANGE_SURFACE.md`). Touching files outside the declared surface is blocked by `ep surface check-diff`. Upon task completion, active surfaces are maintained in .ep/surfaces/<branch>.json and tracked via Git VCS.
 6. **Anti-Sprawl Hygiene (Rule 2.6)**:
    - Hard file ceiling: **$\le 800$ lines** (soft target $\le 400$ lines).
    - Maximum directory depth: **$\le 6$ levels**.
@@ -62,7 +89,7 @@ When executing tasks, follow these operational velocity rules:
 - **Persistent Analysis Caching**: Static analysis and AST grep scans automatically cache clean file hashes in `.ep/cache/ast_cache.json`. Repeated scans on unchanged files execute in milliseconds.
 - **Compound Shell Commands**: Always combine related shell commands using `&&` or pipelines in a single invocation. Never serialize sequential roundtrips.
 - **Batch Independent Reads**: If reading non-repo files, emit multiple parallel tool calls in the same turn.
-- **Context Hygiene**: Redirect noisy build, test, and dependency install output to temporary logs (`/tmp/*.log`). Use `/compact` when conversation history grows long.
+- **Context Hygiene & Compaction Recovery**: Redirect noisy build, test, and dependency install output to temporary logs (`/tmp/*.log`). Use `/compact` when conversation history grows long. **Immediately following memory compaction, execute the mandatory re-read of `SKILL.md` before taking any further action.**
 - **Lossless Technical Density**: Eliminate conversational fluff and filler. Provide exact paths, clickable links, precise diffs, and mechanical test results.
 
 ---
@@ -96,3 +123,9 @@ When project configurations or `AGENT.md` rules are updated, run:
 python3 scripts/ep.py manifest sync
 ```
 This automatically projects canonical `AGENT.md` instructions into platform-specific files (`CLAUDE.md`, `.cursorrules`, `.windsurfrules`), guaranteeing identical agent behavior across Claude Code, Cursor, Windsurf, Antigravity, and Gemini CLI.
+
+Projection targets:
+- **Claude Code**: `CLAUDE.md` (prepended with `<!-- AUTO-GENERATED FROM AGENT.md by ep manifest sync. DO NOT EDIT DIRECTLY. -->`)
+- **Cursor**: `.cursorrules` (prepended with `# Cursor AI Rules - Auto-generated from AGENT.md`)
+- **Windsurf**: `.windsurfrules` (prepended with `# Windsurf Rules - Auto-generated from AGENT.md`)
+- **Subprojects**: `<subproject>/CLAUDE.md`

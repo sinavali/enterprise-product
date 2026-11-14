@@ -95,7 +95,7 @@ HEURISTIC_RULES = [
         "severity": "blocking",
         "description": "Non-UTC clock or un-timezoned timestamp creation in persistence or domain model; violates Tier 1 UTC convention.",
         "path_regex": r"(domain|models|entities|persistence|db|repositories)[\\/].*\.(ts|js|go|cs|php|py)$",
-        "content_regex": r"(DateTime\.Now\b|datetime\.now\(\)|datetime\.today\(\)|CURRENT_TIMESTAMP\b|TIMESTAMP\s+WITHOUT\s+TIME\s+ZONE|time\.Now\(\)(?!\.UTC\(\))|\bdate\()",
+        "content_regex": r"(DateTime\.Now\b|datetime\.now\(\)|datetime\.utcnow\(\)|datetime\.today\(\)|CURRENT_TIMESTAMP\b|TIMESTAMP\s+WITHOUT\s+TIME\s+ZONE|time\.Now\(\)(?!\.UTC\(\))|\bdate\()",
     },
     {
         "dim": 5,
@@ -199,7 +199,7 @@ HEURISTIC_RULES = [
         "severity": "blocking",
         "description": "Tautological or vacuous test assertion detected.",
         "path_regex": r"(\.(spec|test)|_test|([\\/]|^)test_[^\\/]*|([\\/]|^)tests?[\\/].*)\.(ts|tsx|js|jsx|go|cs|py|rs|dart|java|kt)$",
-        "content_regex": r"(expect\((true|1)\)\.(toBe|toBeTruthy)\((true|1)?\)|assert\.(True|Equal)\(true|assert\s+True\b|assert\s+1\s*==\s*1|self\.assertTrue\(True\)|self\.assertEqual\((True,\s*True|1,\s*1)\)|(?:assert|require)\.(True|False)\(\s*t\s*,\s*(true|false)\)|(?:assert|require)\.Equal\(\s*t\s*,\s*1\s*,\s*1\))",
+        "content_regex": r"(expect\((true|1)\)\.(toBe|toBeTruthy)\((true|1)?\)|assert\.(True|Equal)\(true|assert\s+True\b|assert\s+1\s*==\s*1|assert\s+False\s*==\s*False|self\.assertTrue\(True\)|self\.assertFalse\(False\)|self\.assertEqual\((True,\s*True|1,\s*1)\)|(?:assert|require)\.(True|False)\(\s*t\s*,\s*(true|false)\)|(?:assert|require)\.Equal\(\s*t\s*,\s*1\s*,\s*1\))",
     },
     {
         "dim": 10,
@@ -304,79 +304,125 @@ def run_audit(target_dir: str, max_file_lines: int = 800, max_dir_depth: int = 6
 
     all_findings = []
 
+    git_cwd = target_dir if os.path.isdir(target_dir) else None
+    diff_succeeded = False
+    files_to_scan: List[str] = []
+
     if diff_base:
         try:
-            res = subprocess.run(["git", "diff", "--name-only", diff_base], capture_output=True, text=True, check=False, timeout=30)
+            res = subprocess.run(
+                ["git", "diff", "--name-only", diff_base],
+                cwd=git_cwd,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=30,
+            )
             if res.returncode == 0:
-                files_to_scan = [f.strip() for f in res.stdout.splitlines() if f.strip() and os.path.exists(f.strip())]
+                for f in res.stdout.splitlines():
+                    candidate = f.strip()
+                    resolved = os.path.join(git_cwd, candidate) if git_cwd and not os.path.isabs(candidate) else candidate
+                    if candidate and os.path.exists(resolved):
+                        files_to_scan.append(resolved)
+                diff_succeeded = True
             else:
-                files_to_scan = [target_dir] if os.path.isfile(target_dir) else []
-        except Exception:
-            files_to_scan = [target_dir] if os.path.isfile(target_dir) else []
-    elif os.path.isfile(target_dir):
-        files_to_scan = [target_dir]
-    else:
-        files_to_scan = []
-        for root, dirs, files in os.walk(target_dir):
-            dirs[:] = [d for d in dirs if d not in EXCLUDED_DIRS and not d.startswith(".")]
-            
-            # Directory depth & dumping ground check
-            rel_dir = os.path.relpath(root, target_dir)
-            if rel_dir != ".":
-                dir_parts = [p for p in rel_dir.replace("\\", "/").split("/") if p]
-                # Calculate nesting depth relative to the nearest subproject root if auditing from workspace root
-                if dir_parts and dir_parts[0] in {"services", "apps", "libs", "packages"} and len(dir_parts) >= 2:
-                    depth = len(dir_parts) - 2
-                else:
-                    depth = len(dir_parts)
+                err_msg = res.stderr.strip().splitlines()[0] if res.stderr.strip() else f"exit code {res.returncode}"
+                print(f"[WARNING] git diff against base '{diff_base}' failed ({err_msg}). Attempting fallback...", file=sys.stderr)
+        except Exception as e:
+            print(f"[WARNING] git diff against base '{diff_base}' encountered error: {e}. Attempting fallback...", file=sys.stderr)
 
-                if depth > max_dir_depth:
-                    all_findings.append({
-                        "dim": 2,
-                        "id": "RULE-2.5-OVER-NESTED-DIRECTORY",
-                        "severity": "blocking",
-                        "description": f"Directory hierarchy exceeds maximum depth of {max_dir_depth} (depth {depth} found).",
-                        "file": rel_dir.replace("\\", "/"),
-                        "line": 1,
-                        "snippet": f"Path: {rel_dir}",
-                    })
+        if not diff_succeeded and diff_base != "HEAD~1":
+            try:
+                res_head = subprocess.run(
+                    ["git", "diff", "--name-only", "HEAD~1"],
+                    cwd=git_cwd,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=30,
+                )
+                if res_head.returncode == 0:
+                    for f in res_head.stdout.splitlines():
+                        candidate = f.strip()
+                        resolved = os.path.join(git_cwd, candidate) if git_cwd and not os.path.isabs(candidate) else candidate
+                        if candidate and os.path.exists(resolved):
+                            files_to_scan.append(resolved)
+                    diff_succeeded = True
+                    print(f"[INFO] Using fallback diff base 'HEAD~1' ({len(files_to_scan)} files identified).", file=sys.stderr)
+                else:
+                    head_err = res_head.stderr.strip().splitlines()[0] if res_head.stderr.strip() else f"exit code {res_head.returncode}"
+                    print(f"[WARNING] Fallback git diff against 'HEAD~1' failed ({head_err}).", file=sys.stderr)
+            except Exception as e:
+                print(f"[WARNING] Fallback git diff against 'HEAD~1' encountered error: {e}.", file=sys.stderr)
+
+        if not diff_succeeded:
+            print(f"[INFO] Falling back to full scan on target '{target_dir}'.", file=sys.stderr)
+
+    if not diff_succeeded:
+        if os.path.isfile(target_dir):
+            files_to_scan = [target_dir]
+        else:
+            files_to_scan = []
+            for root, dirs, files in os.walk(target_dir):
+                dirs[:] = [d for d in dirs if d not in EXCLUDED_DIRS and not d.startswith(".")]
                 
-                # Check for generic uncohesive dumping grounds
-                for p in dir_parts:
-                    if p.lower() in {"utils", "helpers", "misc", "common"}:
+                # Directory depth & dumping ground check
+                rel_dir = os.path.relpath(root, target_dir)
+                if rel_dir != ".":
+                    dir_parts = [p for p in rel_dir.replace("\\", "/").split("/") if p]
+                    # Calculate nesting depth relative to the nearest subproject root if auditing from workspace root
+                    if dir_parts and dir_parts[0] in {"services", "apps", "libs", "packages"} and len(dir_parts) >= 2:
+                        depth = len(dir_parts) - 2
+                    else:
+                        depth = len(dir_parts)
+
+                    if depth > max_dir_depth:
                         all_findings.append({
                             "dim": 2,
-                            "id": "RULE-2.8-GENERIC-DUMPING-GROUND",
-                            "severity": "suggestion",
-                            "description": f"Generic dumping ground folder '{p}' detected; categorize utilities by domain capability.",
+                            "id": "RULE-2.5-OVER-NESTED-DIRECTORY",
+                            "severity": "blocking",
+                            "description": f"Directory hierarchy exceeds maximum depth of {max_dir_depth} (depth {depth} found).",
                             "file": rel_dir.replace("\\", "/"),
                             "line": 1,
-                            "snippet": f"Directory: {rel_dir}",
+                            "snippet": f"Path: {rel_dir}",
                         })
-                        break
-
-                # Check for operational runbook requirement on services/apps
-                if dir_parts and dir_parts[0] in {"services", "apps"} and len(dir_parts) == 2:
-                    svc_name = dir_parts[1]
-                    if os.path.exists(os.path.join(root, "project.json")):
-                        has_runbook = (
-                            os.path.exists(os.path.join(root, "RUNBOOK.md"))
-                            or os.path.exists(os.path.join(target_dir, "docs", "runbooks", f"{svc_name}.md"))
-                            or os.path.exists(os.path.join(target_dir, "docs", "runbooks", f"{svc_name}.runbook.md"))
-                        )
-                        if not has_runbook:
+                    
+                    # Check for generic uncohesive dumping grounds
+                    for p in dir_parts:
+                        if p.lower() in {"utils", "helpers", "misc", "common"}:
                             all_findings.append({
-                                "dim": 9,
-                                "id": "RULE-9.5-OPERATIONAL-RUNBOOK",
+                                "dim": 2,
+                                "id": "RULE-2.8-GENERIC-DUMPING-GROUND",
                                 "severity": "suggestion",
-                                "description": f"Service '{svc_name}' lacks an operational runbook. Create one using 'templates/RUNBOOK.template.md'.",
-                                "file": os.path.join(rel_dir, "project.json").replace("\\", "/"),
+                                "description": f"Generic dumping ground folder '{p}' detected; categorize utilities by domain capability.",
+                                "file": rel_dir.replace("\\", "/"),
                                 "line": 1,
-                                "snippet": f"Service: {svc_name}",
+                                "snippet": f"Directory: {rel_dir}",
                             })
+                            break
 
-            for f in files:
-                files_to_scan.append(os.path.join(root, f))
+                    # Check for operational runbook requirement on services/apps
+                    if dir_parts and dir_parts[0] in {"services", "apps"} and len(dir_parts) == 2:
+                        svc_name = dir_parts[1]
+                        if os.path.exists(os.path.join(root, "project.json")):
+                            has_runbook = (
+                                os.path.exists(os.path.join(root, "RUNBOOK.md"))
+                                or os.path.exists(os.path.join(target_dir, "docs", "runbooks", f"{svc_name}.md"))
+                                or os.path.exists(os.path.join(target_dir, "docs", "runbooks", f"{svc_name}.runbook.md"))
+                            )
+                            if not has_runbook:
+                                all_findings.append({
+                                    "dim": 9,
+                                    "id": "RULE-9.5-OPERATIONAL-RUNBOOK",
+                                    "severity": "suggestion",
+                                    "description": f"Service '{svc_name}' lacks an operational runbook. Create one using 'templates/RUNBOOK.template.md'.",
+                                    "file": os.path.join(rel_dir, "project.json").replace("\\", "/"),
+                                    "line": 1,
+                                    "snippet": f"Service: {svc_name}",
+                                })
+
+                for f in files:
+                    files_to_scan.append(os.path.join(root, f))
                 
     for f in sorted(files_to_scan):
         all_findings.extend(scan_file_for_violations(f, max_file_lines=max_file_lines))

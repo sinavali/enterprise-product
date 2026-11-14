@@ -214,6 +214,24 @@ def main():
                     needs_fallback = True
             except Exception:
                 needs_fallback = True
+        if needs_fallback:
+            try:
+                branch_res = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, check=False, timeout=10)
+                branch = branch_res.stdout.strip() if branch_res.returncode == 0 else "main"
+                branch_slug = re.sub(r"[^a-zA-Z0-9_\-]", "_", branch)
+                for cand in [
+                    os.path.join(".ep", "surfaces", f"{branch_slug}.md"),
+                    os.path.join(".ep", "surfaces", f"{branch_slug}.json"),
+                    os.path.join(".ep", "surfaces", "active.md"),
+                    os.path.join(".ep", "surfaces", "active.json"),
+                    os.path.join(".ep", "surface.md"),
+                ]:
+                    if os.path.exists(cand):
+                        target_file = cand
+                        needs_fallback = False
+                        break
+            except Exception:
+                pass
         if needs_fallback and os.path.isdir("docs/changes"):
             change_files = sorted(
                 [os.path.join("docs/changes", f) for f in os.listdir("docs/changes") if f.endswith(".md")],

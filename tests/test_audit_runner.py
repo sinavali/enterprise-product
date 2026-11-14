@@ -201,6 +201,36 @@ class TestAuditRunner(unittest.TestCase):
         self.assertIn("RULE-2.1-ORM-IN-DOMAIN", found_ids)
         self.assertIn("RULE-6.5-PII-LOGGING", found_ids)
 
+    def test_deprecated_datetime_utcnow_flagged(self):
+        d_dir = os.path.join(self.temp_dir, "models")
+        os.makedirs(d_dir, exist_ok=True)
+        bad_file = os.path.join(d_dir, "entity.py")
+        with open(bad_file, "w", encoding="utf-8") as f:
+            f.write("import datetime\ncreated = datetime." + "utcnow()\n")
+        proc = subprocess.run(
+            [str(BIN_DIR / "audit-runner"), "--scope", self.temp_dir, "--json"],
+            capture_output=True,
+            text=True,
+        )
+        res = json.loads(proc.stdout)
+        found_ids = [f["id"] for f in res["findings"]]
+        self.assertIn("RULE-4.3-NON-UTC-TIMESTAMP", found_ids)
+
+    def test_tautological_assert_false_flagged(self):
+        t_dir = os.path.join(self.temp_dir, "tests")
+        os.makedirs(t_dir, exist_ok=True)
+        bad_test = os.path.join(t_dir, "test_vacuous.py")
+        with open(bad_test, "w", encoding="utf-8") as f:
+            f.write("def test_vacuous():\n    " + "assert " + "False ==" + " False\n")
+        proc = subprocess.run(
+            [str(BIN_DIR / "audit-runner"), "--scope", self.temp_dir, "--json"],
+            capture_output=True,
+            text=True,
+        )
+        res = json.loads(proc.stdout)
+        found_ids = [f["id"] for f in res["findings"]]
+        self.assertIn("RULE-10.1-TAUTOLOGICAL-TEST", found_ids)
+
     def test_markdown_report_includes_tier_1_checks(self):
         clean_file = os.path.join(self.temp_dir, "service.ts")
         with open(clean_file, "w", encoding="utf-8") as f:
@@ -426,6 +456,66 @@ class TestAuditRunner(unittest.TestCase):
         self.assertEqual(res["verdict"], "PASS")
         self.assertEqual(res["baseline_suppressed"], 1)
 
+    def test_diff_fallback_to_head_when_diff_base_missing(self):
+        """When diff_base does not exist, fallback to HEAD~1 and catch defects."""
+        repo_dir = os.path.join(self.temp_dir, "repo")
+        os.makedirs(repo_dir, exist_ok=True)
+        subprocess.run(["git", "init", "-b", "main"], cwd=repo_dir, check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo_dir, check=True)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=repo_dir, check=True)
+
+        with open(os.path.join(repo_dir, "clean.ts"), "w", encoding="utf-8") as f:
+            f.write("export const val = 1;\n")
+        subprocess.run(["git", "add", "."], cwd=repo_dir, check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "init"], cwd=repo_dir, check=True, capture_output=True)
+
+        test_dir = os.path.join(repo_dir, "tests", "integration")
+        os.makedirs(test_dir, exist_ok=True)
+        with open(os.path.join(test_dir, "repo.test.ts"), "w", encoding="utf-8") as f:
+            f.write("const db = createConnection({ type: 'sqlite', database: ':memory:' });\n")
+        subprocess.run(["git", "add", "."], cwd=repo_dir, check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "add bad test"], cwd=repo_dir, check=True, capture_output=True)
+
+        proc = subprocess.run(
+            [str(BIN_DIR / "audit-runner"), "--scope", repo_dir, "--diff", "origin/nonexistent", "--json"],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(proc.returncode, 1)
+        res = json.loads(proc.stdout)
+        self.assertEqual(res["verdict"], "FAIL")
+        self.assertIn("fallback", proc.stderr.lower())
+        found_ids = [f["id"] for f in res["findings"]]
+        self.assertIn("RULE-4.1-SQLITE-IN-INTEGRATION", found_ids)
+
+    def test_diff_fallback_to_target_scan_when_single_commit(self):
+        """When diff_base and HEAD~1 both fail, fallback to full target scan."""
+        repo_dir = os.path.join(self.temp_dir, "single_commit_repo")
+        os.makedirs(repo_dir, exist_ok=True)
+        subprocess.run(["git", "init", "-b", "main"], cwd=repo_dir, check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo_dir, check=True)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=repo_dir, check=True)
+
+        test_dir = os.path.join(repo_dir, "tests", "integration")
+        os.makedirs(test_dir, exist_ok=True)
+        with open(os.path.join(test_dir, "repo.test.ts"), "w", encoding="utf-8") as f:
+            f.write("const db = createConnection({ type: 'sqlite', database: ':memory:' });\n")
+        subprocess.run(["git", "add", "."], cwd=repo_dir, check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "init bad test"], cwd=repo_dir, check=True, capture_output=True)
+
+        proc = subprocess.run(
+            [str(BIN_DIR / "audit-runner"), "--scope", repo_dir, "--diff", "origin/main", "--json"],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(proc.returncode, 1)
+        res = json.loads(proc.stdout)
+        self.assertEqual(res["verdict"], "FAIL")
+        self.assertIn("Falling back to full scan", proc.stderr)
+        found_ids = [f["id"] for f in res["findings"]]
+        self.assertIn("RULE-4.1-SQLITE-IN-INTEGRATION", found_ids)
+
 
 if __name__ == "__main__":
     unittest.main()
+
